@@ -1,5 +1,6 @@
 # creates links between given FIPS to calculate distance
 import arcpy
+import pandas
 
 # takes time but works like charm
 
@@ -33,7 +34,7 @@ m = "C:/GIS/m.shp"
 
 
 def get_dist_AB(fips_a, fips_b):
-    print ("ArgGIS analyst: Job Received, ONODE: {0}, DNODE: {1} *".format(fips_a, fips_b))
+    #print ("ArgGIS analyst: Job Received, ONODE: {0}, DNODE: {1} *".format(fips_a, fips_b))
     arcpy.CheckOutExtension("Network")
     arcpy.Select_analysis(snapped_dumm, o, 'FIPS = {0}'.format(fips_a))
     arcpy.Select_analysis(snapped_dumm, d, 'FIPS = {0}'.format(fips_b))
@@ -46,9 +47,30 @@ def get_dist_AB(fips_a, fips_b):
         arcpy.FeatureToLine_management("Route/Routes", feature, "", "ATTRIBUTES")
     except:
         print ("Route not found. 999999 Returned")
-        return 999999999
+        return -99
     dummy = [row.getValue("Total_Leng") for row in arcpy.SearchCursor(feature)][0]
     return dummy * 0.000621371
 
 
-get_dist_AB(1073, 36105)
+
+OD = pandas.ExcelFile("GNBC 2017 Traffic OD Test1.xlsx").parse("GNBC 2017 Traffic")
+name_to_FIPS_df = pandas.ExcelFile("FIPS.xls").parse("FIPS")
+name_to_FIPS_df.columns = ["FIPS", "COUNTY", "STATE"]
+name_to_FIPS_df["mapper"]=name_to_FIPS_df["COUNTY"].astype(str)+","+name_to_FIPS_df["STATE"].astype(str)
+name_to_FIPS_df = name_to_FIPS_df.set_index("mapper")
+name_to_FIPS_df = name_to_FIPS_df["FIPS"]
+county_to_fips_dict = name_to_FIPS_df.to_dict()
+
+OD["OFIPS"] = OD['Ostate'].map(county_to_fips_dict)
+OD["DFIPS"] = OD['Dstate'].map(county_to_fips_dict)
+OD = OD.fillna(0)
+
+
+for i in range(len(OD)):
+    origin = int(OD["OFIPS"][i])
+    destination = int(OD["DFIPS"][i])
+    distance = get_dist_AB(origin,destination)
+    print("{0}->{1}:{2}".format(origin,destination,distance))
+    OD["dist"][i] = distance
+
+OD.to_csv("aaa.csv",encoding='utf-8-sig')
