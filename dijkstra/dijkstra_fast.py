@@ -1,6 +1,11 @@
 from collections import defaultdict
+import arcpy
 from heapq import *
-import pandas
+import pandas as pd
+import sys
+
+
+sys.setrecursionlimit(10000)
 
 def dijkstra(edges, f, t):
     g = defaultdict(list)
@@ -13,6 +18,7 @@ def dijkstra(edges, f, t):
             seen.add(v1)
             path = (v1, path)
             if v1 == t: return (cost, path)
+            #if v1 == t: return path
             for c, v2 in g.get(v1, ()):
                 if v2 in seen: continue
                 prev = mins.get(v2, None)
@@ -38,46 +44,82 @@ def pair(nodes):
 
 #returns the link with minimum resistance
 def getlink(x,y):
-    new = df[((df.A_NODE==x) & (df.B_NODE==y)) | ((df.A_NODE==y) & (df.B_NODE==x)) ]
+    new = df[((df[anode]==x) & (df[bnode]==y)) | ((df[anode]==y) & (df[bnode]==x)) ]
     if len(new)!=1:
-        dfnew = df.sort_values(by='RESISTANCE', ascending=True)
-        return dfnew.iloc[0]["ID"]
+        dfnew = new.sort_values(by=resistance, ascending=True)
+        return dfnew.iloc[0][id]
     else:
-        return int(new['ID'])
+        return int(new[id])
 
 
-if __name__ == "__main__":
-    df = pandas.read_csv("network.csv")
-    df["CUM_quant"] = 0
-    edges = []
 
-    #remove the edges that connects the same two nodes but with different resistance
-    #to add
+link_shp = "C:/Users/pankaj/Desktop/Tools/shp/railway_ln_connected/railway_ln_connected.shp"
+resistance = "Shape_Leng"
+anode = "ANODE"
+bnode = "BNODE"
+id = "OBJECTID"
+cum_field_name = "CUM_quant"
 
-    for i in range(len(df)):
-        edges.append((df.iloc[i]["A_NODE"],df.iloc[i]["B_NODE"],df.iloc[i]["RESISTANCE"]))
-        edges.append((df.iloc[i]["B_NODE"], df.iloc[i]["A_NODE"], df.iloc[i]["RESISTANCE"]))
+#shapefile to dataframe
+#change it to a dataframe and remove the nodes whose occurances are >1
+arr = arcpy.da.TableToNumPyArray(link_shp, [id,anode, bnode,resistance])
+df = pd.DataFrame(arr)
+df[cum_field_name] = 0
+edges = []
 
-    print "=== Dijkstra ==="
-    OD = "C:/Users/pankaj/Desktop/RAIL/input/base/base.xlsx"
-    od_df = pandas.read_csv("od.csv")
+#creating a list of sets with (anode, bnode, resistance)
+for i in range(len(df)):
+    edges.append((df.iloc[i][anode],df.iloc[i][bnode],df.iloc[i][resistance]))
+    edges.append((df.iloc[i][bnode], df.iloc[i][anode], df.iloc[i][resistance]))
 
-    for i in range(len(od_df)):
+print "=== DIJKSTRA'S ALGORITHM ==="
+od_df = pd.read_csv("od.csv")
+od_a = "ANODE"
+od_b = "BNODE"
+od_r = "RESISTANCE"
+od_df.columns = [[od_a, od_b, od_r]]
+
+#FIPS converted to NODES
+FIPS = "C:/Users/pankaj/Desktop/RAIL/gis/standards/FIPS.shp"
+point = "C:/GIS/points.shp"
+arcpy.Near_analysis(FIPS,point)
+
+fips_to_nearfid = {row.getValue("FIPS"): row.getValue("NEAR_FID") for row in arcpy.SearchCursor(FIPS)}
+near_fid_to_id = {row.getValue("FID"): row.getValue("Id") for row in arcpy.SearchCursor(point)}
+
+
+fips_to_near_nodes = {x:near_fid_to_id[y] for x,y in fips_to_nearfid.iteritems()}
+
+
+
+route_not_found_list = []
+for i in range(len(od_df)):
+    print("Row: {0}".format(i))
     #run dijkstra in all nodes
-        print (i)
-        anode = od_df.iloc[i]["ONode"]
-        bnode = od_df.iloc[i]["DNode"]
-        quantity = od_df.iloc[i]["quantity"]
-        nodes=[]
-        result= dijkstra(edges, anode, bnode)
-        resistance = result[0]
-        remove_nests(result[1])
-        paired_nodes = pair(nodes)
-        links= []
-        for (a,b) in paired_nodes:
-            links.append(getlink(a,b))
-        #get anode bnode from od file
-        for link in links:
-            df.loc[df['ID'] == link, "CUM_quant"] = df.CUM_quant + quantity
-        if(i%1000 ==0):
-            df.to_csv("output.csv")
+    a_node = fips_to_near_nodes[od_df.iloc[i][od_a]]
+    b_node = fips_to_near_nodes[od_df.iloc[i][od_b]]
+    quantity = od_df.iloc[i][od_r]
+    nodes=[]
+    result= dijkstra(edges, a_node, b_node)
+    if result == float("inf"):
+        print("Route not found: {0}->{1}".format(a_node,b_node))
+        route_not_found_list.append(i)
+        continue
+    resistance_value = result[0] #total resistance (length), not used later
+    list_str = str(result[1])
+    list_str = list_str.replace('(','').replace(')','')
+    nodes=list(eval(list_str))
+    paired_nodes = pair(nodes)
+    links= []
+    for (a,b) in paired_nodes:
+        #print("getlink({0},{1})".format(a,b))
+        links.append(getlink(a,b))
+    #get anode bnode from od file
+    for link in links:
+        df.loc[df[id] == link, cum_field_name] = df[cum_field_name] + quantity
+    if(i%1000 ==0):
+        df.to_csv("output.csv")
+
+
+df.to_csv("output.csv")
+print route_not_found_list

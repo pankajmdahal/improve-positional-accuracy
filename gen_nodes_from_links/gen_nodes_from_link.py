@@ -51,23 +51,23 @@ point_shp = "C:/GIS/points.shp"
 # change the dataframe to a shapefile
 points = arcpy.Point()
 point_geometry = []
+ID_ordered_list = []
 for (x, y), id in coordinates_to_ID_dict.iteritems():
     points.X = x
     points.Y = y
-    points.M = id
+    ID_ordered_list.append(id)
     point_geometry.append(arcpy.PointGeometry(points, arcpy.SpatialReference(4326)))
+
 arcpy.CopyFeatures_management(point_geometry, point_shp)
 
 try:
     arcpy.AddField_management(point_shp, "ID", "SHORT")
 except:
-    print("ID")
+    print("ID added")
 
-coordinates_to_ID_dict_rounded = {(round(x, 4), round(y, 4)): ID for (x, y), ID in coordinates_to_ID_dict.iteritems()}
-
+i=0
 with arcpy.da.UpdateCursor(point_shp, ["OID@", "SHAPE@XY", "ID"]) as cursor:
     for row in cursor:
-        dumm = row[1]
-        rounded_coordinates = (round(dumm[0], 4), round(dumm[1], 4))
-        row[2] = coordinates_to_ID_dict_rounded[rounded_coordinates]
+        row[2] = ID_ordered_list[i]
+        i = i+1
         cursor.updateRow(row)
