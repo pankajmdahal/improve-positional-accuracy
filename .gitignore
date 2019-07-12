@@ -1,0 +1,11 @@
+*.prm
+*.csv
+*.dat
+*.mxd
+*.xlsx
+
+*/intermediate/
+*/input/
+*/output/
+
+shp/
