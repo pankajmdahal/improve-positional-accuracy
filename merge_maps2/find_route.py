@@ -44,6 +44,52 @@ network_dataset = "./intermediate/network_dataset.shp"
 network_dataset_ND = "./intermediate/network_dataset_ND.nd"
 
 
+def str_to_list(value):
+    new = value.replace("(","").replace(")","")
+    new = new.split(",")
+    return new
+
+
+
+#csv file
+coordinates_df = pandas.read_csv("tocsv.csv").transpose()
+coordinates_df = coordinates_df.fillna("?")
+coordinates_df = coordinates_df.applymap(str)
+coordinates_df = coordinates_df.applymap(str_to_list)
+coordinates_df = coordinates_df[0] + coordinates_df[1] +coordinates_df[2]
+coordinates_dict = coordinates_df.to_dict()
+del coordinates_dict['Unnamed: 0']
+
+coordinates_conv_dict = {}
+for key,value in coordinates_dict.iteritems():
+    #print key
+    value1 = value
+    if '?' in value1:
+        value1.remove('?')
+        try:
+            value1.remove('?')
+        except:
+            pass
+    if len(value1)==2:
+        value1 = [list((float(value1[0]),float(value1[1])))]
+        #print "2:{0}".format(value1)
+    elif len(value1)==4:
+        new = [list((float(value1[0]),float(value1[1])))]
+        new.append(list((float(value1[2]),float(value1[3]))))
+        value1 = new
+        #print "4:{0}".format(value1)
+    elif len(value1)==6:
+        new = [list((float(value1[0]),float(value1[1])))]
+        new.append(list((float(value1[2]),float(value1[3]))))
+        new.append(list((float(value1[4]),float(value1[5]))))
+        value1 = new
+        #print "6:{0}".format(value1)
+    else:
+        print value1
+        print 'WTF'
+        value1 = []
+    coordinates_conv_dict[int(key)] = value1
+
 
 # base is the one with the highest number of features
 count = 0
@@ -60,6 +106,9 @@ others.remove(base)
 # csv files
 no_routes = "noroutes.csv"
 no_tolerance = "notolerance.csv"
+
+node_coordinate_dict = {}
+
 
 
 # functions
@@ -84,9 +133,11 @@ def get_length_route(points):
         return 99999
 
 
+
 arcpy.CheckOutExtension("Network")
 
 for other in others:
+
     # clip the area (would be removed later when working with entire US)
     arcpy.MakeFeatureLayer_management(other, "temp")
     arcpy.SelectLayerByLocation_management("temp", "INTERSECT", clip_area_shp, "", "", "")  # takes a long time
@@ -103,37 +154,50 @@ for other in others:
     print ("working on {0}".format(other))
     arcpy.MakeFeatureLayer_management(other, other_f)
     start_end_ids_dict = {row1.getValue("_ID_"): [row1.getValue("_A_"), row1.getValue("_B_"), row1.getValue("_LEN_")] for row1 in arcpy.SearchCursor(clipped_dataset)}
-    print clipped_dataset_pt
-    node_coordinate_dict = {row2.getValue("_ID_"): [row2.getValue("_X_"), row2.getValue("_Y_")] for row2 in arcpy.SearchCursor(clipped_dataset_pt)}
+    #print clipped_dataset_pt
+    #node_coordinate_dict = {row2.getValue("_ID_"): [row2.getValue("_X_"), row2.getValue("_Y_")] for row2 in arcpy.SearchCursor(clipped_dataset_pt)}
     route_not_found_dict = {}
-    route_tolerance_exceed_dict = {}
+    route_tolerance_within_dict = []
+    i=0
     for key, [_a_, _b_, _len_] in start_end_ids_dict.iteritems():
-        _a_coord = node_coordinate_dict[_a_]
-        _b_coord = node_coordinate_dict[_b_]
-        print("Working on {0}->{1}".format(_a_coord, _b_coord))
-
+        print i
+        i = i+1
+        print "{0}:{1}->{2}".format(key,_a_,_b_)
+        # prepare ND
         # use the key to buffer/clip/create ND
         where_clause = """ "_ID_" = %d""" % key
         arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
         arcpy.Buffer_analysis(other_f, buffer_shp, buffer_dist)
-
         arcpy.SelectLayerByLocation_management(base_f, "INTERSECT", buffer_shp, "", "", "")
         arcpy.CopyFeatures_management(base_f, network_dataset)
         arcpy.BuildNetwork_na(network_dataset_ND)
         arcpy.MakeRouteLayer_na(network_dataset_ND, "Route", "Length")
-
-        # find a way to find out other coordinates
-        # a loop to select other coordinates
-
-        route_leng = get_length_route([_a_coord, _b_coord])
-        if route_leng == 99999:
-            sys.stdout.write('*')
+        try:
+            a_list = coordinates_conv_dict[_a_]
+            b_list = coordinates_conv_dict[_b_]
+        except:
             route_not_found_dict[key] = _len_
+            #print "e"
             continue
+        if a_list is None or b_list is None:
+            route_not_found_dict[key]=_len_
+            #print "n"
+            continue
+        if a_list ==[] or b_list==[]:
+            print a_list
+            print b_list
+            route_not_found_dict[key]=_len_
+            print "l"
+            continue
+        for x1y1 in a_list:
+            for x2y2 in b_list:
+                print("Working on {0}->{1}".format(x1y1, x2y2))
+                route_leng = get_length_route([x1y1, x2y2])
+                if abs((route_leng - _len_) / _len_) <= 0.1:
+                    route_tolerance_within_dict.append(key)
 
-        if abs((route_leng - _len_) / _len_) >= 0.1:
-            print("^")
-            route_tolerance_exceed_dict[key] = [route_leng, _len_]
-
-    pandas.DataFrame.from_dict(route_not_found_dict, orient='index').to_csv(no_routes)
-    pandas.DataFrame.from_dict(route_tolerance_exceed_dict, orient='index').to_csv(no_tolerance)
+        if i%100 == 0:
+            all_keys = list(start_end_ids_dict.keys())
+            tolerance_exceed_list = [x for x in all_keys if x not in route_tolerance_within_dict]
+            pandas.DataFrame.from_dict(route_not_found_dict, orient='index').to_csv(no_routes)
+            pandas.DataFrame.from_dict(tolerance_exceed_list).to_csv(no_tolerance)

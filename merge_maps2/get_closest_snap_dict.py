@@ -114,6 +114,10 @@ for other in others:
                 else:
                     id_buffer_dict[key] = int(buffer_dist.split(" ")[0])
                     break
+            if len(ids_list) == 0:
+                print ("Highest range didn't work")
+                no_nearby_linkids.append(key)
+                continue
             ids = remove_touching_linkids(ids_list)
             print "Proximite link IDs: {1}".format(len(ids),ids)
             if len(ids) == 0: #not found upto highest
@@ -128,6 +132,6 @@ for other in others:
                     for xy in curs:
                         nearxy.append(xy[0])
             near_ids[key] = nearxy
-pandas.DataFrame({key: pandas.Series(value) for key, value in near_ids.iteritems()}).to_csv("tocsv.csv")
+pandas.DataFrame({key: pandas.Series(value) for key, value in near_ids.iteritems()}).transpose.to_csv("tocsv.csv")
 pandas.DataFrame(no_nearby_linkids).to_csv("no_nearby.csv")
 pandas.DataFrame.from_dict(id_buffer_dict, orient = 'index').to_csv("id_buffer_dict.csv")
