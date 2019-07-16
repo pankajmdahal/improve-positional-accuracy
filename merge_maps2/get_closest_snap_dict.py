@@ -8,18 +8,17 @@ import os
 
 arcpy.env.overwriteOutput = True
 
-# parameters
-buffer_dist_list = ['20 feet','40 feet','60 feet']
+# parameters, keep on going to 200 feet if not found
+buffer_dist_list = ['20 feet','40 feet','60 feet','80 feet','100 feet','120 feet', '140 feet','160 feet','180 feet','200 feet']
 
 # getting the names of all the shape files
 intermediate_folder = './intermediate/'
 list_of_shp = os.listdir(intermediate_folder)
 list_of_shp = [x for x in list_of_shp if '.shp' in x]
-list_of_shp = [x for x in list_of_shp if 'pt' not in x]
-list_of_shp = [x for x in list_of_shp if 'ND_Junctions' not in x]
-list_of_shp = [x for x in list_of_shp if '_dataset' not in x]
-list_of_shp = [x for x in list_of_shp if 'xml' not in x]
-list_of_shp = [x for x in list_of_shp if 'lock' not in x]
+
+remove_list = ['pt', 'ND_Junctions', '_dataset', 'xml', 'lock']
+for value in remove_list:
+    list_of_shp = [x for x in list_of_shp if value not in x]
 
 list_of_shp = [intermediate_folder + x for x in list_of_shp]
 print("List of layers imported {0}".format(list_of_shp))
@@ -40,6 +39,7 @@ clipped_dataset = "./intermediate/clipped_dataset.shp"
 clipped_dataset_f = "./intermediate/clipped_dataset_f.shp"
 clipped_dataset_pt = "./intermediate/pt_clipped_dataset.shp"
 clipped_dataset_pt_f = "clippedfeature"
+other_pt_f = "other_pt"
 
 network_dataset = "./intermediate/network_dataset.shp"
 network_dataset_ND = "./intermediate/network_dataset_ND.nd"
@@ -80,58 +80,69 @@ def remove_touching_linkids(list):
 
 
 for other in others:
-
     # clipping the shapefile and getting node-coordinate dict
+    arcpy.MakeFeatureLayer_management(other, "temp1")
+    arcpy.SelectLayerByLocation_management("temp1", "INTERSECT", clip_area_shp, "", "", "")  # takes a long time
+    arcpy.CopyFeatures_management("temp1", clipped_dataset)
+    link_node_dict = {row2.getValue("_ID_"): [row2.getValue("_A_"), row2.getValue("_B_")] for row2 in arcpy.SearchCursor(clipped_dataset)}
+    nodes_inside = []
+    for key, value in link_node_dict.iteritems():
+        if value[0] not in nodes_inside:
+            nodes_inside.append(value[0])
+        if value[1] not in nodes_inside:
+            nodes_inside.append(value[1])
+        else:
+            continue
+
     other_pt = other
     other_pt = other_pt.replace("intermediate/", "intermediate/pt_")
+    node_coordinates_dict = {row2.getValue("_ID_"): [row2.getValue("_X_"), row2.getValue("_Y_")] for row2 in arcpy.SearchCursor(other_pt)}
+    clipped_coordinates_dict = {x:[node_coordinates_dict[x][0],node_coordinates_dict[x][0]] for x in nodes_inside}
 
-    arcpy.MakeFeatureLayer_management(other_pt, "temp1")
-    arcpy.SelectLayerByLocation_management("temp1", "INTERSECT", clip_area_shp, "", "", "")  # takes a long time
-    arcpy.CopyFeatures_management("temp1", clipped_dataset_pt)
-    node_coordinate_dict = {row2.getValue("_ID_"): [row2.getValue("_X_"), row2.getValue("_Y_")] for row2 in
-                            arcpy.SearchCursor(clipped_dataset_pt)}
     arcpy.MakeFeatureLayer_management(base, base_f)
-    arcpy.MakeFeatureLayer_management(clipped_dataset_pt, clipped_dataset_pt_f)
+    arcpy.MakeFeatureLayer_management(other_pt, other_pt_f)
 
     # find the nearest coordinates to those links
     near_ids = {}
     no_nearby_linkids = []
     id_buffer_dict = {}
-    with arcpy.da.SearchCursor(clipped_dataset_pt, ["_ID_", "_X_", "_Y_"]) as cursor:
-        for key, _x_, _y_ in cursor:
-            print key
-            where_clause = """ "_ID_" = %d""" % key
-            arcpy.SelectLayerByAttribute_management(clipped_dataset_pt_f, "NEW_SELECTION", where_clause)
-            for buffer_dist in buffer_dist_list:
-                arcpy.Buffer_analysis(clipped_dataset_pt_f, buffer_shp, buffer_dist)
-                arcpy.SelectLayerByLocation_management(base_f, "INTERSECT", buffer_shp, "", "", "")  # takes a long time
-                # get IDs of those links
-                ids_list = [row.getValue("_ID_") for row in arcpy.SearchCursor(base_f)]
-                # remove touching IDs
-                if len(ids_list) == 0:
-                    print "Increasing buffer distance.."
-                    continue
-                else:
-                    id_buffer_dict[key] = int(buffer_dist.split(" ")[0])
-                    break
+    i=0
+    for key, [_x_, _y_] in clipped_coordinates_dict.iteritems():
+        i=i+1
+        print key
+        where_clause = """ "_ID_" = %d""" % key
+        arcpy.SelectLayerByAttribute_management(other_pt_f, "NEW_SELECTION", where_clause)
+        for buffer_dist in buffer_dist_list:
+            arcpy.Buffer_analysis(other_pt_f, buffer_shp, buffer_dist)
+            arcpy.SelectLayerByLocation_management(base_f, "INTERSECT", buffer_shp, "", "", "")  # takes a long time
+            # get IDs of those links
+            ids_list = [row.getValue("_ID_") for row in arcpy.SearchCursor(base_f)]
+            # remove touching IDs
             if len(ids_list) == 0:
-                print ("Highest range didn't work")
-                no_nearby_linkids.append(key)
+                print "Increasing buffer distance.."
                 continue
-            ids = remove_touching_linkids(ids_list)
-            print "Proximite link IDs: {1}".format(len(ids),ids)
-            if len(ids) == 0: #not found upto highest
-                continue
-            nearxy = []
-            for id in ids:
-                where_clause = """ "_ID_" = %d""" % id
-                arcpy.SelectLayerByAttribute_management(base_f, "NEW_SELECTION", where_clause)
-                arcpy.CopyFeatures_management(clipped_dataset_pt_f, m1)
-                arcpy.Snap_edit(m1, [[base_f, "EDGE", "100 Miles"]])
-                with arcpy.da.SearchCursor(m1, ["SHAPE@XY"]) as curs:
-                    for xy in curs:
-                        nearxy.append(xy[0])
-            near_ids[key] = nearxy
-pandas.DataFrame({key: pandas.Series(value) for key, value in near_ids.iteritems()}).transpose.to_csv("tocsv.csv")
-pandas.DataFrame(no_nearby_linkids).to_csv("no_nearby.csv")
-pandas.DataFrame.from_dict(id_buffer_dict, orient = 'index').to_csv("id_buffer_dict.csv")
+            else:
+                id_buffer_dict[key] = int(buffer_dist.split(" ")[0])
+                break
+        if len(ids_list) == 0:
+            print ("Highest range didn't work")
+            no_nearby_linkids.append(key)
+            continue
+        ids = remove_touching_linkids(ids_list)
+        print "Proximite link IDs: {1}".format(len(ids),ids)
+        if len(ids) == 0: #not found upto highest
+            continue
+        nearxy = []
+        for id in ids:
+            where_clause = """ "_ID_" = %d""" % id
+            arcpy.SelectLayerByAttribute_management(base_f, "NEW_SELECTION", where_clause)
+            arcpy.CopyFeatures_management(other_pt_f, m1)
+            arcpy.Snap_edit(m1, [[base_f, "EDGE", "100 Miles"]])
+            with arcpy.da.SearchCursor(m1, ["SHAPE@XY"]) as curs:
+                for xy in curs:
+                    nearxy.append(xy[0])
+        near_ids[key] = nearxy
+        if i%100 == 0:
+            pandas.DataFrame({key: pandas.Series(value) for key, value in near_ids.iteritems()}).transpose().to_csv("tocsv.csv")
+            pandas.DataFrame(no_nearby_linkids).to_csv("no_nearby.csv")
+            pandas.DataFrame.from_dict(id_buffer_dict, orient = 'index').to_csv("id_buffer_dict.csv")
