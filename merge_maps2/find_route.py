@@ -19,6 +19,7 @@ list_of_shp = [x for x in list_of_shp if 'pt' not in x]
 list_of_shp = [x for x in list_of_shp if 'ND_Junctions' not in x]
 list_of_shp = [x for x in list_of_shp if '_dataset' not in x]
 list_of_shp = [x for x in list_of_shp if 'xml' not in x]
+list_of_shp = [x for x in list_of_shp if 'lock' not in x]
 
 
 list_of_shp = [intermediate_folder + x for x in list_of_shp]
@@ -52,17 +53,16 @@ def str_to_list(value):
 
 
 #csv file
-coordinates_df = pandas.read_csv("tocsv.csv").transpose()
+coordinates_df = pandas.read_csv("tocsv.csv").set_index('Unnamed: 0')
 coordinates_df = coordinates_df.fillna("?")
 coordinates_df = coordinates_df.applymap(str)
 coordinates_df = coordinates_df.applymap(str_to_list)
-coordinates_df = coordinates_df[0] + coordinates_df[1] +coordinates_df[2]
-coordinates_dict = coordinates_df.to_dict()
-del coordinates_dict['Unnamed: 0']
+coordinates_df['new'] = coordinates_df['0'] + coordinates_df['1'] +coordinates_df['2']
+coordinates_df = coordinates_df[['new']]
+coordinates_dict = coordinates_df.to_dict()['new']
 
 coordinates_conv_dict = {}
 for key,value in coordinates_dict.iteritems():
-    #print key
     value1 = value
     if '?' in value1:
         value1.remove('?')
@@ -86,7 +86,7 @@ for key,value in coordinates_dict.iteritems():
         #print "6:{0}".format(value1)
     else:
         print value1
-        print 'WTF'
+        print "Exception"
         value1 = []
     coordinates_conv_dict[int(key)] = value1
 
@@ -193,7 +193,7 @@ for other in others:
             for x2y2 in b_list:
                 print("Working on {0}->{1}".format(x1y1, x2y2))
                 route_leng = get_length_route([x1y1, x2y2])
-                if abs((route_leng - _len_) / _len_) <= 0.1:
+                if abs((route_leng - _len_) / _len_) <= 0.2:
                     route_tolerance_within_dict.append(key)
 
         if i%100 == 0:
@@ -201,3 +201,9 @@ for other in others:
             tolerance_exceed_list = [x for x in all_keys if x not in route_tolerance_within_dict]
             pandas.DataFrame.from_dict(route_not_found_dict, orient='index').to_csv(no_routes)
             pandas.DataFrame.from_dict(tolerance_exceed_list).to_csv(no_tolerance)
+
+
+# for values in route_not_found_dict():
+#     where_clause = """ "_ID_" = %d OR """ % key
+#     arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
+
