@@ -1,6 +1,6 @@
 import arcpy
 import os
-
+import pandas
 
 shp_folder = './input/'
 intermediate_folder = './intermediate/'
@@ -11,27 +11,40 @@ list_of_shp = [x for x in list_of_shp if '.shp' in x]
 arcpy.env.overwriteOutput = True
 
 m1 = "in_memory/m1"
-temp = "C:/GIS/temp.shp"
 p1 = "in_memory/p1"
+temp = "C:/GIS/temp.shp"
+
 
 sr = arcpy.SpatialReference(4326)
 
-
 for shp in list_of_shp:
-
     m = shp_folder + shp
     sr1 = arcpy.Describe(m).spatialReference
-    if sr1.name !=sr.name:
+    if sr1.name != sr.name:
         print("Projecting to WGS1984")
         arcpy.Project_management(m, temp, sr)
         arcpy.CopyFeatures_management(temp, m1)
-        print("completed.")
+        print("Successful.")
     else:
         arcpy.CopyFeatures_management(m, m1)
+
+    # check for multipart features
+    multipart_list = []
+    with arcpy.da.SearchCursor(m1, ["OBJECTID", "SHAPE@"]) as cursor:
+        for row in cursor:
+            count = row[1].partCount
+            if count > 1:
+                multipart_list.append(row[0])
+
+    if len(multipart_list) > 0:
+        print ("Please fix multipart on {0}".format(shp))
+        pandas.DataFrame(multipart_list).to_csv("multipart_nodes.csv")
+        continue
+
     fieldnames = [f.name for f in arcpy.ListFields(m1)]
     fieldnames.remove("FID")
     fieldnames.remove("Shape")
-    arcpy.DeleteField_management(m1,fieldnames)
+    arcpy.DeleteField_management(m1, fieldnames)
     arcpy.AddField_management(m1, "_ID_", "LONG")
     arcpy.AddField_management(m1, "_LEN_", "DOUBLE")
     arcpy.CalculateField_management(m1, "_ID_", '!FID!', "PYTHON")
