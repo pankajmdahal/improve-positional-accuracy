@@ -14,6 +14,9 @@ m1 = "in_memory/m1"
 p1 = "in_memory/p1"
 temp = "C:/GIS/temp.shp"
 
+#output csv
+multipart_nodes_csv = "intermediate/multipart_nodes"
+
 
 sr = arcpy.SpatialReference(4326)
 
@@ -38,7 +41,7 @@ for shp in list_of_shp:
 
     if len(multipart_list) > 0:
         print ("Please fix multipart on {0}".format(shp))
-        pandas.DataFrame(multipart_list).to_csv("multipart_nodes.csv")
+        pandas.DataFrame(multipart_list).to_csv(multipart_nodes_csv + shp + ".csv")
         continue
 
     fieldnames = [f.name for f in arcpy.ListFields(m1)]
