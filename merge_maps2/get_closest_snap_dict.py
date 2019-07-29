@@ -26,19 +26,21 @@ print("List of layers imported {0}".format(list_of_shp))
 # shape files
 m = "in_memory/T4"
 m1 = "in_memory/T5"
-feature = "feature"
-f = "C:/GIS/temp.shp"
+#f = "C:/GIS/temp.shp"
+f = "in_memory/T2"
 base_f = "base_f"
 other_f = "other_f"
-buffer_shp = "C:/GIS/buffer.shp"
-route_shp = "route_shp"
+#buffer_shp = "C:/GIS/buffer.shp"
+buffer_shp = "in_memory/B1"
+#route_shp = "route_shp"
 
 clip_area_shp = "../shp/clip_area/TN.shp"
-temp_shp1 = "C:/GIS/T1.shp"
-clipped_dataset = "./intermediate/clipped_dataset.shp"
-clipped_dataset_f = "./intermediate/clipped_dataset_f.shp"
-clipped_dataset_pt = "./intermediate/pt_clipped_dataset.shp"
-clipped_dataset_pt_f = "clippedfeature"
+#temp_shp1 = "C:/GIS/T1.shp"
+temp_shp1 = "in_memory/T1"
+clipped_dataset = "in_memory/c2"
+clipped_dataset_f = "clipped_f"
+clipped_dataset_pt = "in_memory/c1"
+clipped_dataset_pt_f = "clipped_pt_f"
 other_pt_f = "other_pt"
 
 network_dataset = "./intermediate/network_dataset.shp"
@@ -91,13 +93,12 @@ for other in others:
             nodes_inside.append(value[0])
         if value[1] not in nodes_inside:
             nodes_inside.append(value[1])
-        else:
-            continue
+        continue
 
     other_pt = other
     other_pt = other_pt.replace("intermediate/", "intermediate/pt_")
-    node_coordinates_dict = {row2.getValue("_ID_"): [row2.getValue("_X_"), row2.getValue("_Y_")] for row2 in arcpy.SearchCursor(other_pt)}
-    clipped_coordinates_dict = {x:[node_coordinates_dict[x][0],node_coordinates_dict[x][0]] for x in nodes_inside}
+    #node_coordinates_dict = {row2.getValue("_ID_"): [row2.getValue("_X_"), row2.getValue("_Y_")] for row2 in arcpy.SearchCursor(other_pt)}
+    #clipped_coordinates_dict = {x:[node_coordinates_dict[x][0],node_coordinates_dict[x][1]] for x in nodes_inside}
 
     arcpy.MakeFeatureLayer_management(base, base_f)
     arcpy.MakeFeatureLayer_management(other_pt, other_pt_f)
@@ -107,8 +108,12 @@ for other in others:
     no_nearby_linkids = []
     id_buffer_dict = {}
     i=0
-    for key, [_x_, _y_] in clipped_coordinates_dict.iteritems():
+    for key in nodes_inside:
         i=i+1
+        if i%100 == 0:
+            pandas.DataFrame({key: pandas.Series(value) for key, value in near_ids.iteritems()}).transpose().to_csv("tocsv.csv")
+            pandas.DataFrame(no_nearby_linkids).to_csv("no_nearby.csv")
+            pandas.DataFrame.from_dict(id_buffer_dict, orient = 'index').to_csv("id_buffer_dict.csv")
         print key
         where_clause = """ "_ID_" = %d""" % key
         arcpy.SelectLayerByAttribute_management(other_pt_f, "NEW_SELECTION", where_clause)
@@ -137,12 +142,12 @@ for other in others:
             where_clause = """ "_ID_" = %d""" % id
             arcpy.SelectLayerByAttribute_management(base_f, "NEW_SELECTION", where_clause)
             arcpy.CopyFeatures_management(other_pt_f, m1)
-            arcpy.Snap_edit(m1, [[base_f, "EDGE", "100 Miles"]])
+            arcpy.Snap_edit(m1, [[base_f, "EDGE", "1 Miles"]]) #the snap distance is 200f feet for now
             with arcpy.da.SearchCursor(m1, ["SHAPE@XY"]) as curs:
                 for xy in curs:
                     nearxy.append(xy[0])
         near_ids[key] = nearxy
-        if i%100 == 0:
-            pandas.DataFrame({key: pandas.Series(value) for key, value in near_ids.iteritems()}).transpose().to_csv("tocsv.csv")
-            pandas.DataFrame(no_nearby_linkids).to_csv("no_nearby.csv")
-            pandas.DataFrame.from_dict(id_buffer_dict, orient = 'index').to_csv("id_buffer_dict.csv")
+
+pandas.DataFrame({key: pandas.Series(value) for key, value in near_ids.iteritems()}).transpose().to_csv("tocsv.csv")
+pandas.DataFrame(no_nearby_linkids).to_csv("no_nearby.csv")
+pandas.DataFrame.from_dict(id_buffer_dict, orient = 'index').to_csv("id_buffer_dict.csv")

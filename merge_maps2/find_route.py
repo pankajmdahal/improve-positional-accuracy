@@ -10,6 +10,8 @@ arcpy.env.overwriteOutput = True
 
 # parameters
 buffer_dist = '50 feet'
+a_list = []
+b_list = []
 
 # getting the names of all the shape files
 intermediate_folder = './intermediate/'
@@ -28,12 +30,19 @@ print("List of layers imported {0}".format(list_of_shp))
 
 # shape files
 m = "in_memory/T4"
+m = "C:/GIS/temp.shp"
 feature = "feature"
 f = "C:/GIS/temp.shp"
 base_f = "base_f"
 other_f = "other_f"
 buffer_shp = "in_memory/b1"
 route_shp = "route_shp"
+
+#output shp
+output_no_routes_shp = "C:/GIS/noroutes.shp"
+output_tolerance_exceed_shp = "C:/GIS/exceedtolerance.shp"
+
+
 
 clip_area_shp = "../shp/clip_area/TN.shp"
 temp_shp1 = "C:/GIS/T1.shp"
@@ -43,6 +52,9 @@ clipped_dataset_pt = "./intermediate/pt_clipped_dataset.shp"
 
 network_dataset = "./intermediate/network_dataset.shp"
 network_dataset_ND = "./intermediate/network_dataset_ND.nd"
+
+all_dataset = "./intermediate/railway_ln_connected.shp"
+all_dataset_ND = "./intermediate/railway_ln_connected_ND.nd"
 
 
 def str_to_list(value):
@@ -109,6 +121,32 @@ no_tolerance = "notolerance.csv"
 
 node_coordinate_dict = {}
 
+def create_nd_shp(key, _a_,_b_,_len_):
+    print "{0}:{1}->{2}".format(key, _a_, _b_)
+    # prepare ND
+    # use the key to buffer/clip/create ND
+    where_clause = """ "_ID_" = %d""" % key
+    arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
+    arcpy.Buffer_analysis(other_f, buffer_shp, buffer_dist)
+    arcpy.SelectLayerByLocation_management(base_f, "INTERSECT", buffer_shp, "", "", "")
+    number = []
+    with arcpy.da.SearchCursor(base_f, ["_ID_"]) as curs:
+        for xy in curs:
+            number.append(xy[0])
+    print number
+    if len(number)<1:
+        arcpy.MakeRouteLayer_na(all_dataset_ND, "Route", "Length")
+        print "#"
+    else:
+        arcpy.CopyFeatures_management(base_f, network_dataset)
+        arcpy.BuildNetwork_na(network_dataset_ND)
+        arcpy.MakeRouteLayer_na(network_dataset_ND, "Route", "Length")
+    try:
+        return (coordinates_conv_dict[_a_],coordinates_conv_dict[_b_])
+    except:
+        route_not_found_dict[key] = _len_
+        return 0
+
 
 
 # functions
@@ -118,92 +156,84 @@ def get_length_route(points):
     for pt in points:
         point.X = pt[0]
         point.Y = pt[1]
-        pointGeometry = arcpy.PointGeometry(point)
+        pointGeometry = arcpy.PointGeometry(point).projectAs(arcpy.SpatialReference(4326))
         pointGeometryList.append(pointGeometry)
     arcpy.CopyFeatures_management(pointGeometryList, m)
-    try:
-        arcpy.AddLocations_na("Route", "Stops", m, "Name Name #", "0.5 Miles", "", "", "MATCH_TO_CLOSEST", "CLEAR",
-                              "NO_SNAP", "5 Meters", "INCLUDE", "")
-        arcpy.Solve_na("Route", "SKIP", "TERMINATE", "500 Kilometers")
-        arcpy.SelectData_management("Route", "Routes")
-        arcpy.FeatureToLine_management("Route\\Routes", f, "", "ATTRIBUTES")
-        leng = [row.getValue("Total_Leng") for row in arcpy.SearchCursor(f)][0] / 1609.34
-        return leng
-    except:
-        return 99999
+    arcpy.AddLocations_na("Route", "Stops", m, "Name Name #", "0.5 Miles", "", "", "MATCH_TO_CLOSEST", "CLEAR",
+                          "NO_SNAP", "10 Meters", "INCLUDE", "")
+    arcpy.Solve_na("Route", "SKIP", "TERMINATE", "500 Kilometers")
+    arcpy.SelectData_management("Route", "Routes")
+    arcpy.FeatureToLine_management("Route\\Routes", f, "", "ATTRIBUTES")
+    leng = [row.getValue("Total_Leng") for row in arcpy.SearchCursor(f)][0] / 1609.34
+    return leng
 
 
+def get_where_clause(list_of_link_ids):
+    wh_cl = ""
+    for id in list_of_link_ids:
+        wh_cl = wh_cl + """"_ID_" = %d OR """ % id
+    return wh_cl[:-4]
 
 arcpy.CheckOutExtension("Network")
 
 for other in others:
-
     # clip the area (would be removed later when working with entire US)
     arcpy.MakeFeatureLayer_management(other, "temp")
     arcpy.SelectLayerByLocation_management("temp", "INTERSECT", clip_area_shp, "", "", "")  # takes a long time
     arcpy.CopyFeatures_management("temp", clipped_dataset)
     other_pt = other
     other_pt = other_pt.replace("intermediate/", "intermediate/pt_")
-    # arcpy.MakeFeatureLayer_management(other_pt, "temp1")
-    # arcpy.SelectLayerByLocation_management("temp1", "INTERSECT", clip_area_shp, "", "", "")  # takes a long time
-    # arcpy.CopyFeatures_management("temp1", clipped_dataset_pt)
     clipped_dataset_pt = other_pt
     print("Clipped Dataset Created..")
     arcpy.MakeFeatureLayer_management(base, base_f)
-
     print ("working on {0}".format(other))
     arcpy.MakeFeatureLayer_management(other, other_f)
     start_end_ids_dict = {row1.getValue("_ID_"): [row1.getValue("_A_"), row1.getValue("_B_"), row1.getValue("_LEN_")] for row1 in arcpy.SearchCursor(clipped_dataset)}
     #print clipped_dataset_pt
     #node_coordinate_dict = {row2.getValue("_ID_"): [row2.getValue("_X_"), row2.getValue("_Y_")] for row2 in arcpy.SearchCursor(clipped_dataset_pt)}
     route_not_found_dict = {}
-    route_tolerance_within_dict = []
-    i=0
-    for key, [_a_, _b_, _len_] in start_end_ids_dict.iteritems():
-        print i
-        i = i+1
-        print "{0}:{1}->{2}".format(key,_a_,_b_)
-        # prepare ND
-        # use the key to buffer/clip/create ND
-        where_clause = """ "_ID_" = %d""" % key
-        arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
-        arcpy.Buffer_analysis(other_f, buffer_shp, buffer_dist)
-        arcpy.SelectLayerByLocation_management(base_f, "INTERSECT", buffer_shp, "", "", "")
-        arcpy.CopyFeatures_management(base_f, network_dataset)
-        arcpy.BuildNetwork_na(network_dataset_ND)
-        arcpy.MakeRouteLayer_na(network_dataset_ND, "Route", "Length")
-        try:
-            a_list = coordinates_conv_dict[_a_]
-            b_list = coordinates_conv_dict[_b_]
-        except:
-            route_not_found_dict[key] = _len_
-            #print "e"
-            continue
-        if a_list is None or b_list is None:
-            route_not_found_dict[key]=_len_
-            #print "n"
-            continue
-        if a_list ==[] or b_list==[]:
-            print a_list
-            print b_list
-            route_not_found_dict[key]=_len_
-            print "l"
-            continue
-        for x1y1 in a_list:
-            for x2y2 in b_list:
-                print("Working on {0}->{1}".format(x1y1, x2y2))
+    route_tolerance_exceed_dict = {}
+
+for key in start_end_ids_dict.keys():
+    _a_ = start_end_ids_dict[key][0]
+    _b_ = start_end_ids_dict[key][1]
+    _len_ = start_end_ids_dict[key][2]
+    dumm = create_nd_shp(key, _a_, _b_, _len_)
+    if dumm==0:
+        continue #already added to route not found dict
+    else:
+        (a_list, b_list) = dumm
+    distance_list_dict = []
+    # x1y1 = a_list[0]
+    # x2y2 = b_list[0]
+    for x1y1 in a_list:
+        for x2y2 in b_list:
+            try:
                 route_leng = get_length_route([x1y1, x2y2])
-                if abs((route_leng - _len_) / _len_) <= 0.2:
-                    route_tolerance_within_dict.append(key)
+            except:
+                route_leng = 99999
+            distance_list_dict.append(route_leng)
 
-        if i%100 == 0:
-            all_keys = list(start_end_ids_dict.keys())
-            tolerance_exceed_list = [x for x in all_keys if x not in route_tolerance_within_dict]
-            pandas.DataFrame.from_dict(route_not_found_dict, orient='index').to_csv(no_routes)
-            pandas.DataFrame.from_dict(tolerance_exceed_list).to_csv(no_tolerance)
+    minimum_distance = min(distance_list_dict)
+    if abs((minimum_distance - _len_) / _len_) >= 0.2:
+        route_tolerance_exceed_dict[key]=minimum_distance
 
+pandas.DataFrame.from_dict(route_not_found_dict, orient='index').to_csv(no_routes)
+pandas.DataFrame.from_dict(route_tolerance_exceed_dict, orient='index').to_csv(no_tolerance)
 
-# for values in route_not_found_dict():
-#     where_clause = """ "_ID_" = %d OR """ % key
-#     arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
+#create no_route_shp
+where_clause = get_where_clause(route_not_found_dict.keys())
+arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
+arcpy.CopyFeatures_management(other_f,output_no_routes_shp )
+
+#create no_tolerance_shp
+where_clause = get_where_clause(route_tolerance_exceed_dict.keys())
+print where_clause
+arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
+arcpy.CopyFeatures_management(other_f,output_tolerance_exceed_shp )
+arcpy.AddField_management(output_tolerance_exceed_shp,'_RLENG_',"FLOAT")
+with arcpy.da.UpdateCursor(output_tolerance_exceed_shp, ['_ID_','_RLENG_']) as cursor:
+    for row in cursor:
+        row[1] = route_tolerance_exceed_dict[row[0]]
+        cursor.updateRow(row)
 
