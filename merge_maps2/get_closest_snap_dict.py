@@ -84,8 +84,9 @@ def remove_touching_linkids(list):
 for other in others:
     # clipping the shapefile and getting node-coordinate dict
     arcpy.MakeFeatureLayer_management(other, "temp1")
-    arcpy.SelectLayerByLocation_management("temp1", "INTERSECT", clip_area_shp, "", "", "")  # takes a long time
-    arcpy.CopyFeatures_management("temp1", clipped_dataset)
+    # arcpy.SelectLayerByLocation_management("temp1", "INTERSECT", clip_area_shp, "", "", "")  # takes a long time
+    # arcpy.CopyFeatures_management("temp1", clipped_dataset)
+    clipped_dataset = "temp1"
     link_node_dict = {row2.getValue("_ID_"): [row2.getValue("_A_"), row2.getValue("_B_")] for row2 in arcpy.SearchCursor(clipped_dataset)}
     nodes_inside = []
     for key, value in link_node_dict.iteritems():
@@ -108,6 +109,7 @@ for other in others:
     no_nearby_linkids = []
     id_buffer_dict = {}
     i=0
+    arcpy.AddSpatialIndex_management(base_f) #adjusted comment from gis.stackoverflow
     for key in nodes_inside:
         i=i+1
         if i%100 == 0:
@@ -133,7 +135,8 @@ for other in others:
             print ("Highest range didn't work")
             no_nearby_linkids.append(key)
             continue
-        ids = remove_touching_linkids(ids_list)
+        ids = ids_list
+        #ids = remove_touching_linkids(ids_list) # this causes issues for shorter links
         print "Proximite link IDs: {1}".format(len(ids),ids)
         if len(ids) == 0: #not found upto highest
             continue

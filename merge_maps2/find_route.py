@@ -1,8 +1,6 @@
 # finding routes that are not
 
 import arcpy
-import sys
-import csv
 import pandas
 import os
 
@@ -12,6 +10,10 @@ arcpy.env.overwriteOutput = True
 buffer_dist = '50 feet'
 a_list = []
 b_list = []
+clip_state_list = ["'TX'"]
+#clip_state_list = []
+
+
 
 # getting the names of all the shape files
 intermediate_folder = './intermediate/'
@@ -43,8 +45,9 @@ output_no_routes_shp = "C:/GIS/noroutes.shp"
 output_tolerance_exceed_shp = "C:/GIS/exceedtolerance.shp"
 
 
-
-clip_area_shp = "../shp/clip_area/TN.shp"
+all_area_shp = "../shp/clip_area/all.shp"
+all_area_shp_f = "allarea"
+clip_area_shp = "../shp/clip_area/clip.shp"
 temp_shp1 = "C:/GIS/T1.shp"
 clipped_dataset = "./intermediate/clipped_dataset.shp"
 clipped_dataset_f = "./intermediate/clipped_dataset_f.shp"
@@ -55,6 +58,25 @@ network_dataset_ND = "./intermediate/network_dataset_ND.nd"
 
 all_dataset = "./intermediate/railway_ln_connected.shp"
 all_dataset_ND = "./intermediate/railway_ln_connected_ND.nd"
+
+
+def get_where_clause(colname, list_of_link_ids):
+    wh_cl = ""
+    for id in list_of_link_ids:
+        wh_cl = wh_cl + """"{0}" = {1} OR """.format(colname,id)
+    return wh_cl[:-4]
+
+
+#create clip shp
+if len(clip_state_list)==0:
+    clip_area_shp = all_area_shp
+else:
+    arcpy.arcpy.MakeFeatureLayer_management(all_area_shp, all_area_shp_f)
+    where_clause = get_where_clause("ABBR",clip_state_list)
+    arcpy.SelectLayerByAttribute_management(all_area_shp_f, "NEW_SELECTION", where_clause)
+    arcpy.CopyFeatures_management(all_area_shp_f,clip_area_shp)
+
+
 
 
 def str_to_list(value):
@@ -121,33 +143,44 @@ no_tolerance = "notolerance.csv"
 
 node_coordinate_dict = {}
 
+# def create_nd_shp(key, _a_,_b_,_len_):
+#     print "{0}:{1}->{2}".format(key, _a_, _b_)
+#     # prepare ND
+#     # use the key to buffer/clip/create ND
+#     where_clause = """ "_ID_" = %d""" % key
+#     arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
+#     arcpy.Buffer_analysis(other_f, buffer_shp, buffer_dist)
+#     arcpy.SelectLayerByLocation_management(base_f, "INTERSECT", buffer_shp, "", "", "")
+#     number = []
+#     with arcpy.da.SearchCursor(base_f, ["_ID_"]) as curs:
+#         for xy in curs:
+#             number.append(xy[0])
+#     print number
+#     if len(number)<1:
+#         arcpy.MakeRouteLayer_na(all_dataset_ND, "Route", "Length")
+#         print "#"
+#     else:
+#         arcpy.CopyFeatures_management(base_f, network_dataset)
+#         arcpy.BuildNetwork_na(network_dataset_ND)
+#         arcpy.MakeRouteLayer_na(network_dataset_ND, "Route", "Length")
+#     try:
+#         return (coordinates_conv_dict[_a_],coordinates_conv_dict[_b_])
+#     except:
+#         route_not_found_dict[key] = _len_
+#         return 0
+
+
+# prepare ND
+# uses entire network for ND
+arcpy.MakeRouteLayer_na(all_dataset_ND, "Route", "Length")
 def create_nd_shp(key, _a_,_b_,_len_):
     print "{0}:{1}->{2}".format(key, _a_, _b_)
-    # prepare ND
-    # use the key to buffer/clip/create ND
-    where_clause = """ "_ID_" = %d""" % key
-    arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
-    arcpy.Buffer_analysis(other_f, buffer_shp, buffer_dist)
-    arcpy.SelectLayerByLocation_management(base_f, "INTERSECT", buffer_shp, "", "", "")
-    number = []
-    with arcpy.da.SearchCursor(base_f, ["_ID_"]) as curs:
-        for xy in curs:
-            number.append(xy[0])
-    print number
-    if len(number)<1:
-        arcpy.MakeRouteLayer_na(all_dataset_ND, "Route", "Length")
-        print "#"
-    else:
-        arcpy.CopyFeatures_management(base_f, network_dataset)
-        arcpy.BuildNetwork_na(network_dataset_ND)
-        arcpy.MakeRouteLayer_na(network_dataset_ND, "Route", "Length")
+
     try:
         return (coordinates_conv_dict[_a_],coordinates_conv_dict[_b_])
     except:
         route_not_found_dict[key] = _len_
         return 0
-
-
 
 # functions
 def get_length_route(points):
@@ -168,11 +201,7 @@ def get_length_route(points):
     return leng
 
 
-def get_where_clause(list_of_link_ids):
-    wh_cl = ""
-    for id in list_of_link_ids:
-        wh_cl = wh_cl + """"_ID_" = %d OR """ % id
-    return wh_cl[:-4]
+
 
 arcpy.CheckOutExtension("Network")
 
@@ -206,6 +235,8 @@ for key in start_end_ids_dict.keys():
     distance_list_dict = []
     # x1y1 = a_list[0]
     # x2y2 = b_list[0]
+
+
     for x1y1 in a_list:
         for x2y2 in b_list:
             try:
@@ -214,26 +245,27 @@ for key in start_end_ids_dict.keys():
                 route_leng = 99999
             distance_list_dict.append(route_leng)
 
-    minimum_distance = min(distance_list_dict)
-    if abs((minimum_distance - _len_) / _len_) >= 0.2:
-        route_tolerance_exceed_dict[key]=minimum_distance
+    if _len_ < 0.00473485: #25 feet
+        minimum_distance = min(distance_list_dict, key=lambda x: abs(x - _len_))
+    else:
+        minimum_distance = min(distance_list_dict)
+    route_tolerance_exceed_dict[key]=[minimum_distance, _len_]
 
 pandas.DataFrame.from_dict(route_not_found_dict, orient='index').to_csv(no_routes)
 pandas.DataFrame.from_dict(route_tolerance_exceed_dict, orient='index').to_csv(no_tolerance)
 
 #create no_route_shp
-where_clause = get_where_clause(route_not_found_dict.keys())
+where_clause = get_where_clause("_ID_",route_not_found_dict.keys())
 arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
 arcpy.CopyFeatures_management(other_f,output_no_routes_shp )
 
 #create no_tolerance_shp
-where_clause = get_where_clause(route_tolerance_exceed_dict.keys())
-print where_clause
+where_clause = get_where_clause("_ID_",route_tolerance_exceed_dict.keys())
 arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
 arcpy.CopyFeatures_management(other_f,output_tolerance_exceed_shp )
 arcpy.AddField_management(output_tolerance_exceed_shp,'_RLENG_',"FLOAT")
 with arcpy.da.UpdateCursor(output_tolerance_exceed_shp, ['_ID_','_RLENG_']) as cursor:
     for row in cursor:
-        row[1] = route_tolerance_exceed_dict[row[0]]
+        row[1] = route_tolerance_exceed_dict[row[0]][0]
         cursor.updateRow(row)
 
