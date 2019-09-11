@@ -28,6 +28,8 @@ route_shp = "route_shp"
 # output shp
 output_no_routes_shp = "C:/GIS/noroutes.shp"
 output_tolerance_exceed_shp = "C:/GIS/exceedtolerance.shp"
+output_buffer_tolerance_exceed_shp = "C:/GIS/exceedbuffertolerance.shp"
+
 
 all_area_shp = "../shp/clip_area/all.shp"
 all_area_shp_f = "allarea"
@@ -200,7 +202,7 @@ for other in others:
     # node_coordinate_dict = {row2.getValue("_ID_"): [row2.getValue("_X_"), row2.getValue("_Y_")] for row2 in arcpy.SearchCursor(clipped_dataset_pt)}
     route_not_found_dict = {}
     route_tolerance_exceed_dict = {}
-    route_tolerance_buffer_exceed_dict = {}
+    route_buffer_exceed_dict = {}
     miniature_links_dict = {}
 
 for key in start_end_ids_dict.keys():
@@ -221,29 +223,41 @@ for key in start_end_ids_dict.keys():
     minimum_distance = get_route_distance(a_list, b_list, network_dataset_ND)
     if minimum_distance == 99999:  # any route not found in the buffer layer
         minimum_distance = get_route_distance(a_list, b_list, all_dataset_ND)
-        route_tolerance_exceed_dict[key] = [minimum_distance, _len_]
+        route_buffer_exceed_dict[key] = [minimum_distance, _len_]
         if minimum_distance == 99999:
             route_not_found_dict[key] = _len_
     else:
-        route_tolerance_buffer_exceed_dict[key] = [minimum_distance, _len_]
+        route_tolerance_exceed_dict[key] = [minimum_distance, _len_]
 
 pandas.DataFrame.from_dict(route_not_found_dict, orient='index').to_csv(no_routes)
 pandas.DataFrame.from_dict(route_tolerance_exceed_dict, orient='index').to_csv(no_tolerance)
-pandas.DataFrame.from_dict(route_tolerance_buffer_exceed_dict, orient='index').to_csv(no_tolerance_buffer)
+pandas.DataFrame.from_dict(route_buffer_exceed_dict, orient='index').to_csv(no_tolerance_buffer)
 
 # create no_route_shp
 where_clause = get_where_clause("_ID_", route_not_found_dict.keys())
 arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
 arcpy.CopyFeatures_management(other_f, output_no_routes_shp)
 
-# create no_tolerance_shp
-route_tolerance_exceed_within_tolerance = {x: y for x, y in route_tolerance_buffer_exceed_dict.iteritems() if
+# create no_tolerance_within_buffer shp
+route_within_threshold_dict = {x: y for x, y in route_tolerance_exceed_dict.iteritems() if
                                            abs(y[0] - y[1]) / y[1] > threshold / 100}
-where_clause = get_where_clause("_ID_", route_tolerance_exceed_within_tolerance.keys())
+where_clause = get_where_clause("_ID_", route_within_threshold_dict.keys())
 arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
 arcpy.CopyFeatures_management(other_f, output_tolerance_exceed_shp)
 arcpy.AddField_management(output_tolerance_exceed_shp, '_RLENG_', "FLOAT")
 with arcpy.da.UpdateCursor(output_tolerance_exceed_shp, ['_ID_', '_RLENG_']) as cursor:
     for row in cursor:
-        row[1] = route_tolerance_exceed_dict[row[0]][0]
+        row[1] = route_within_threshold_dict[row[0]][0]
+        cursor.updateRow(row)
+
+#create no_tolerance_shp
+route_buffer_within_threshold_dict = {x: y for x, y in route_buffer_exceed_dict.iteritems() if
+                                           abs(y[0] - y[1]) / y[1] > threshold / 100}
+where_clause = get_where_clause("_ID_", route_buffer_within_threshold_dict.keys())
+arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
+arcpy.CopyFeatures_management(other_f, output_buffer_tolerance_exceed_shp)
+arcpy.AddField_management(output_buffer_tolerance_exceed_shp, '_RLENG_', "FLOAT")
+with arcpy.da.UpdateCursor(output_buffer_tolerance_exceed_shp, ['_ID_', '_RLENG_']) as cursor:
+    for row in cursor:
+        row[1] = route_buffer_within_threshold_dict[row[0]][0]
         cursor.updateRow(row)
