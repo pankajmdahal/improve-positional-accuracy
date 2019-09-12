@@ -1,22 +1,18 @@
+#checks for multipart and creates nodes to each links
 import arcpy
 import os
 import pandas
+from merge import *
 
-shp_folder = './input/'
-intermediate_folder = './intermediate/'
+
 
 list_of_shp = os.listdir(shp_folder)
 list_of_shp = [x for x in list_of_shp if '.shp' in x]
 
 arcpy.env.overwriteOutput = True
 
-m1 = "in_memory/m1"
-p1 = "in_memory/p1"
-temp = "C:/GIS/temp.shp"
-
 #output csv
 multipart_nodes_csv = "intermediate/multipart_nodes"
-
 
 sr = arcpy.SpatialReference(4326)
 

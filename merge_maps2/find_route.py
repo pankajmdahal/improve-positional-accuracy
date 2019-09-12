@@ -1,58 +1,22 @@
-# finding routes that are not
+# finding links that are not in base network
+# 1. at least one of the nodes could not be snapped within snap distance, or no route found
+# 2. route found within buffer distance
+# 3. routes found within the network
 
 import arcpy
 import pandas
 import os
+from merge import *
 
 arcpy.env.overwriteOutput = True
 
 # parameters
-buffer_dist = 50 #feet
-threshold = 50  # %
 a_list = []
 b_list = []
-clip_state_list = ["'TN'"]
-# clip_state_list = []
-
-
-# shape files
-m = "in_memory/T4"
-m = "C:/GIS/temp.shp"
-feature = "feature"
-f = "C:/GIS/temp.shp"
-base_f = "base_f"
-other_f = "other_f"
-buffer_shp = "in_memory/b1"
-route_shp = "route_shp"
-
-# output shp
-output_no_routes_shp = "C:/GIS/noroutes.shp"
-output_tolerance_exceed_shp = "C:/GIS/exceedtolerance.shp"
-output_buffer_tolerance_exceed_shp = "C:/GIS/exceedbuffertolerance.shp"
-
-
-all_area_shp = "../shp/clip_area/all.shp"
-all_area_shp_f = "allarea"
-clip_area_shp = "../shp/clip_area/clip.shp"
-temp_shp1 = "C:/GIS/T1.shp"
-clipped_dataset = "./intermediate/clipped_dataset.shp"
-clipped_dataset_f = "./intermediate/clipped_dataset_f.shp"
-clipped_dataset_pt = "./intermediate/pt_clipped_dataset.shp"
-
-network_dataset = "./intermediate/network_dataset.shp"
-network_dataset_ND = "./intermediate/network_dataset_ND.nd"
-
-all_dataset = "./intermediate/railway_ln_connected.shp"
-all_dataset_ND = "./intermediate/railway_ln_connected_ND.nd"
-
-# csv files
-no_routes = "noroutes.csv"
-no_tolerance = "notolerance.csv"
-no_tolerance_buffer = "notolerancebuffer.csv"
 
 node_coordinate_dict = {}
 
-# getting the names of all the shape files
+# getting the names of all the shape files from intermediate folder (processed files)
 intermediate_folder = './intermediate/'
 list_of_shp = os.listdir(intermediate_folder)
 list_of_shp = [x for x in list_of_shp if '.shp' in x]
@@ -62,7 +26,6 @@ for filename in exclude_files_list:
 
 list_of_shp = [intermediate_folder + x for x in list_of_shp]
 print("List of layers imported {0}".format(list_of_shp))
-
 
 def get_where_clause(colname, list_of_link_ids):
     wh_cl = ""
@@ -87,7 +50,7 @@ else:
     arcpy.CopyFeatures_management(all_area_shp_f, clip_area_shp)
 
 # read csv files
-coordinates_df = pandas.read_csv("tocsv.csv").set_index('Unnamed: 0')
+coordinates_df = pandas.read_csv(node_coordinates_dict).set_index('Unnamed: 0')
 coordinates_df = coordinates_df.fillna("?")
 coordinates_df = coordinates_df.applymap(str)
 coordinates_df = coordinates_df.applymap(str_to_list)
@@ -137,13 +100,11 @@ others.remove(base)
 
 
 def create_buffer_nd_shp(key, _a_, _b_, _len_):
-    print "{0}:{1}->{2}".format(key, _a_, _b_)
     # prepare ND
     # use the key to buffer/clip/create ND
     where_clause = """ "_ID_" = %d""" % key
     arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
     arcpy.Buffer_analysis(other_f, buffer_shp, str(buffer_dist) + ' feet')
-
     arcpy.SelectLayerByLocation_management(base_f, "INTERSECT", buffer_shp, "", "", "")
     arcpy.CopyFeatures_management(base_f, network_dataset)
     arcpy.BuildNetwork_na(network_dataset_ND)
@@ -209,12 +170,15 @@ for key in start_end_ids_dict.keys():
     _a_ = start_end_ids_dict[key][0]
     _b_ = start_end_ids_dict[key][1]
     _len_ = start_end_ids_dict[key][2]
+    print "{0}:{1}->{2}".format(key, _a_, _b_)
     # if any of these nodes are not in the list, just ouput
     if _a_ not in coordinates_conv_dict or _b_ not in coordinates_conv_dict:
         route_not_found_dict[key] = _len_
+        print "!" # one or more of the nodes not in base network
         continue
     if _len_ < 2 * buffer_dist / 5280:  # if the links are comparable in size to the buffer distance
         miniature_links_dict[key] = _len_
+        print "~" # length of the link is too small compared to buffer
         continue
 
     # for search of routes within buffer
@@ -222,42 +186,16 @@ for key in start_end_ids_dict.keys():
     distance_list_dict = []
     minimum_distance = get_route_distance(a_list, b_list, network_dataset_ND)
     if minimum_distance == 99999:  # any route not found in the buffer layer
+        print "&" # route found only within the entire network
         minimum_distance = get_route_distance(a_list, b_list, all_dataset_ND)
         route_buffer_exceed_dict[key] = [minimum_distance, _len_]
         if minimum_distance == 99999:
             route_not_found_dict[key] = _len_
+            print "^" # nodes mapped but route not found in base network
     else:
+        print "@"
         route_tolerance_exceed_dict[key] = [minimum_distance, _len_]
 
 pandas.DataFrame.from_dict(route_not_found_dict, orient='index').to_csv(no_routes)
 pandas.DataFrame.from_dict(route_tolerance_exceed_dict, orient='index').to_csv(no_tolerance)
 pandas.DataFrame.from_dict(route_buffer_exceed_dict, orient='index').to_csv(no_tolerance_buffer)
-
-# create no_route_shp
-where_clause = get_where_clause("_ID_", route_not_found_dict.keys())
-arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
-arcpy.CopyFeatures_management(other_f, output_no_routes_shp)
-
-# create no_tolerance_within_buffer shp
-route_within_threshold_dict = {x: y for x, y in route_tolerance_exceed_dict.iteritems() if
-                                           abs(y[0] - y[1]) / y[1] > threshold / 100}
-where_clause = get_where_clause("_ID_", route_within_threshold_dict.keys())
-arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
-arcpy.CopyFeatures_management(other_f, output_tolerance_exceed_shp)
-arcpy.AddField_management(output_tolerance_exceed_shp, '_RLENG_', "FLOAT")
-with arcpy.da.UpdateCursor(output_tolerance_exceed_shp, ['_ID_', '_RLENG_']) as cursor:
-    for row in cursor:
-        row[1] = route_within_threshold_dict[row[0]][0]
-        cursor.updateRow(row)
-
-#create no_tolerance_shp
-route_buffer_within_threshold_dict = {x: y for x, y in route_buffer_exceed_dict.iteritems() if
-                                           abs(y[0] - y[1]) / y[1] > threshold / 100}
-where_clause = get_where_clause("_ID_", route_buffer_within_threshold_dict.keys())
-arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
-arcpy.CopyFeatures_management(other_f, output_buffer_tolerance_exceed_shp)
-arcpy.AddField_management(output_buffer_tolerance_exceed_shp, '_RLENG_', "FLOAT")
-with arcpy.da.UpdateCursor(output_buffer_tolerance_exceed_shp, ['_ID_', '_RLENG_']) as cursor:
-    for row in cursor:
-        row[1] = route_buffer_within_threshold_dict[row[0]][0]
-        cursor.updateRow(row)
