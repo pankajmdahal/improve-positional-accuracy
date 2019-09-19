@@ -16,6 +16,12 @@ multipart_nodes_csv = "intermediate/multipart_nodes"
 
 sr = arcpy.SpatialReference(4326)
 
+
+def delete_field_multiple(feature,list_of_fields):
+    for fields in list_of_fields:
+        arcpy.DeleteField_management(feature,fields)
+
+
 for shp in list_of_shp:
     m = shp_folder + shp
     sr1 = arcpy.Describe(m).spatialReference
@@ -61,16 +67,8 @@ for shp in list_of_shp:
             row[1] = row[0][0]
             row[2] = row[0][1]
             cursor.updateRow(row)
-
-    arcpy.DeleteField_management(p1, "ORIG_FID")
-    arcpy.DeleteField_management(p1, "Id")
-    arcpy.DeleteField_management(p1, "_ID_")
-    arcpy.DeleteField_management(p1, "_LEN_")
-    arcpy.DeleteField_management(p1, "_A_")
-    arcpy.DeleteField_management(p1, "_B_")
-
+    delete_field_multiple(p1,["ORIG_FID", "Id", "_ID_", "_LEN_", "_A_", "_B_"])
     arcpy.DeleteIdentical_management(p1, ['_X_', '_Y_'])
-
     arcpy.AddField_management(p1, "_ID_", "LONG")
     arcpy.CalculateField_management(p1, "_ID_", '!FID!', "PYTHON")
 

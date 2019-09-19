@@ -1,5 +1,5 @@
 #parameters
-buffer_dist = 50.0 #feet
+buffer_dist = 100.0 #feet, good for smaller links, and good for longer links to (note completely within used)
 threshold = 50.0
 clip_state_list = ["'TN'"]
 # keep on going to 200 feet if not found
@@ -50,9 +50,9 @@ all_dataset = "./intermediate/railway_ln_connected.shp"
 all_dataset_ND = "./intermediate/railway_ln_connected_ND.nd"
 
 # csv files
-no_routes = "noroutes.csv"
-no_tolerance = "notolerance.csv"
-no_tolerance_buffer = "notolerancebuffer.csv"
-node_coordinates_dict = "node_near_coordinates_dict.csv"
-no_nearby_dict = "no_nearby.csv"
-id_buffer_dict = "id_buffer_dict.csv"
+no_routes = "./csv/noroutes.csv"
+no_tolerance = "./csv/notolerance.csv"
+no_tolerance_buffer = "./csv/notolerancebuffer.csv"
+node_coordinates_dict = "./csv/node_near_coordinates_dict.csv"
+no_nearby_dict = "./csv/no_nearby.csv"
+id_buffer_dict = "./csv/id_buffer_dict.csv"

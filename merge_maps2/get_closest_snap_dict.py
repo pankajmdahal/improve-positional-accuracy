@@ -1,4 +1,4 @@
-# finding routes that are not
+# finding links that are not in the base network
 
 import arcpy
 import sys
@@ -65,9 +65,6 @@ for other in others:
 
     other_pt = other
     other_pt = other_pt.replace("intermediate/", "intermediate/pt_")
-    # node_coordinates_dict = {row2.getValue("_ID_"): [row2.getValue("_X_"), row2.getValue("_Y_")] for row2 in arcpy.SearchCursor(other_pt)}
-    # clipped_coordinates_dict = {x:[node_coordinates_dict[x][0],node_coordinates_dict[x][1]] for x in nodes_inside}
-
     arcpy.MakeFeatureLayer_management(base, base_f)
     arcpy.MakeFeatureLayer_management(other_pt, other_pt_f)
 
@@ -82,8 +79,8 @@ for other in others:
         if i % 100 == 0:
             pandas.DataFrame({key: pandas.Series(value) for key, value in near_ids.iteritems()}).transpose().to_csv(
                 node_coordinates_dict)
-            pandas.DataFrame(no_nearby_linkids).to_csv(no_nearby_dict)
-            pandas.DataFrame.from_dict(id_buffer_dict, orient='index').to_csv(id_buffer_dict)
+            #pandas.DataFrame(no_nearby_linkids).to_csv(no_nearby_dict)
+            #pandas.DataFrame.from_dict(id_buffer_dict, orient='index').to_csv(id_buffer_dict)
         print key
         where_clause = """ "_ID_" = %d""" % key
         arcpy.SelectLayerByAttribute_management(other_pt_f, "NEW_SELECTION", where_clause)
@@ -122,4 +119,4 @@ for other in others:
 pandas.DataFrame({key: pandas.Series(value) for key, value in near_ids.iteritems()}).transpose().to_csv(
     node_coordinates_dict)
 pandas.DataFrame(no_nearby_linkids).to_csv(no_nearby_dict)
-pandas.DataFrame.from_dict(id_buffer_dict, orient='index').to_csv(id_buffer_dict)
+#pandas.DataFrame.from_dict(id_buffer_dict, orient='index').to_csv(id_buffer_dict)

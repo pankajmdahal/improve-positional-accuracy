@@ -22,13 +22,15 @@ def import_dict_from_csv(filename):
         datadict = {int(column[0]): [column[1], column[2]] for index, column in data.iterrows()}
     else:
         print("number of columns exceeded")
+        print ("{0} columns ".format(no_of_columns-1))
+        print(filename)
     return datadict
 
 
 # read from csv files to a dict
-route_not_found_dict = import_dict_from_csv("noroutes.csv")
-route_tolerance_exceed_dict = import_dict_from_csv("notolerance.csv")
-route_buffer_exceed_dict = import_dict_from_csv("notolerancebuffer.csv")
+route_not_found_dict = import_dict_from_csv(no_routes)
+route_tolerance_exceed_dict = import_dict_from_csv(no_tolerance)
+route_buffer_exceed_dict = import_dict_from_csv(no_tolerance_buffer)
 
 
 def get_where_clause(colname, list_of_link_ids):

@@ -105,8 +105,8 @@ def create_buffer_nd_shp(key, _a_, _b_, _len_):
     where_clause = """ "_ID_" = %d""" % key
     arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
     arcpy.Buffer_analysis(other_f, buffer_shp, str(buffer_dist) + ' feet')
-    arcpy.SelectLayerByLocation_management(base_f, "INTERSECT", buffer_shp, "", "", "")
-    arcpy.CopyFeatures_management(base_f, network_dataset)
+    arcpy.Clip_analysis(base,buffer_shp,network_dataset)
+    #arcpy.CopyFeatures_management(m1, network_dataset)
     arcpy.BuildNetwork_na(network_dataset_ND)
     return (coordinates_conv_dict[_a_], coordinates_conv_dict[_b_])
 
@@ -126,7 +126,8 @@ def get_length_route(points):
     arcpy.Solve_na("Route", "SKIP", "TERMINATE", "500 Kilometers")
     arcpy.SelectData_management("Route", "Routes")
     arcpy.FeatureToLine_management("Route\\Routes", f, "", "ATTRIBUTES")
-    leng = [row.getValue("Total_Leng") for row in arcpy.SearchCursor(f)][0] / 1609.34
+    #corrected to "Total_Length" from "Total_Leng"
+    leng = [row.getValue("Total_Length") for row in arcpy.SearchCursor(f)][0] / 1609.34
     return leng
 
 
@@ -166,35 +167,35 @@ for other in others:
     route_buffer_exceed_dict = {}
     miniature_links_dict = {}
 
-for key in start_end_ids_dict.keys():
-    _a_ = start_end_ids_dict[key][0]
-    _b_ = start_end_ids_dict[key][1]
-    _len_ = start_end_ids_dict[key][2]
-    print "{0}:{1}->{2}".format(key, _a_, _b_)
-    # if any of these nodes are not in the list, just ouput
-    if _a_ not in coordinates_conv_dict or _b_ not in coordinates_conv_dict:
-        route_not_found_dict[key] = _len_
-        print "!" # one or more of the nodes not in base network
-        continue
-    if _len_ < 2 * buffer_dist / 5280:  # if the links are comparable in size to the buffer distance
-        miniature_links_dict[key] = _len_
-        print "~" # length of the link is too small compared to buffer
-        continue
-
-    # for search of routes within buffer
-    (a_list, b_list) = create_buffer_nd_shp(key, _a_, _b_, _len_)
-    distance_list_dict = []
-    minimum_distance = get_route_distance(a_list, b_list, network_dataset_ND)
-    if minimum_distance == 99999:  # any route not found in the buffer layer
-        print "&" # route found only within the entire network
-        minimum_distance = get_route_distance(a_list, b_list, all_dataset_ND)
-        route_buffer_exceed_dict[key] = [minimum_distance, _len_]
-        if minimum_distance == 99999:
+    for key in start_end_ids_dict.keys():
+        _a_ = start_end_ids_dict[key][0]
+        _b_ = start_end_ids_dict[key][1]
+        _len_ = start_end_ids_dict[key][2]
+        print "{0}:{1}->{2}".format(key, _a_, _b_)
+        # if any of these nodes are not in the list, just ouput
+        if _a_ not in coordinates_conv_dict or _b_ not in coordinates_conv_dict:
             route_not_found_dict[key] = _len_
-            print "^" # nodes mapped but route not found in base network
-    else:
-        print "@"
-        route_tolerance_exceed_dict[key] = [minimum_distance, _len_]
+            print "!" # one or more of the nodes not in base network
+            continue
+        if _len_ < 2 * buffer_dist / 5280:  # if the links are comparable in size to the buffer distance
+            miniature_links_dict[key] = _len_
+            print "~" # length of the link is too small compared to buffer
+            continue
+
+        # for search of routes within buffer
+        (a_list, b_list) = create_buffer_nd_shp(key, _a_, _b_, _len_)
+        distance_list_dict = []
+        minimum_distance = get_route_distance(a_list, b_list, network_dataset_ND)
+        if minimum_distance == 99999:  # any route not found in the buffer layer
+            print "&" # route found only within the entire network
+            minimum_distance = get_route_distance(a_list, b_list, all_dataset_ND)
+            route_buffer_exceed_dict[key] = [minimum_distance, _len_]
+            if minimum_distance == 99999:
+                route_not_found_dict[key] = _len_
+                print "^" # nodes mapped but route not found in base network
+        else:
+            print "@"
+            route_tolerance_exceed_dict[key] = [minimum_distance, _len_]
 
 pandas.DataFrame.from_dict(route_not_found_dict, orient='index').to_csv(no_routes)
 pandas.DataFrame.from_dict(route_tolerance_exceed_dict, orient='index').to_csv(no_tolerance)
