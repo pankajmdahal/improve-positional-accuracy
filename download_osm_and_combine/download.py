@@ -14,8 +14,10 @@ already_done_list = os.listdir("./intermediate/shapefiles")
 name_list = [x for x in all_name_list if x not in already_done_list]
 
 for names in name_list:
+    if names == "california":
+        continue
     print ("Working on " + names)
-    if names in ['canada', 'mexico']:
+    if names in ['mexico']:
         link_url = "http://download.geofabrik.de/north-america/" + names + "-latest-free.shp.zip"
         if names == 'canada': #no canada data available in the website
             continue
