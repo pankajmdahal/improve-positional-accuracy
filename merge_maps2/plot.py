@@ -47,7 +47,7 @@ arcpy.CopyFeatures_management(other_f, output_no_routes_shp)
 
 # create no_tolerance_within_buffer shp
 route_within_threshold_dict = {x: y for x, y in route_tolerance_exceed_dict.iteritems() if
-                               (abs(y[0] - y[1]) / y[1]) > threshold / 100}
+                               (abs(y[0] - y[1]) / y[1]) > float(threshold) / 100}
 where_clause = get_where_clause("_ID_", route_within_threshold_dict.keys())
 arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
 arcpy.CopyFeatures_management(other_f, output_tolerance_exceed_shp)
@@ -59,7 +59,7 @@ with arcpy.da.UpdateCursor(output_tolerance_exceed_shp, ['_ID_', '_RLENG_']) as 
 
 # create no_tolerance_shp
 route_buffer_within_threshold_dict = {x: y for x, y in route_buffer_exceed_dict.iteritems() if
-                                      (abs(y[0] - y[1]) / y[1]) > threshold / 100}
+                                      (abs(y[0] - y[1]) / y[1]) > float(threshold) / 100}
 where_clause = get_where_clause("_ID_", route_buffer_within_threshold_dict.keys())
 arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
 arcpy.CopyFeatures_management(other_f, output_buffer_tolerance_exceed_shp)

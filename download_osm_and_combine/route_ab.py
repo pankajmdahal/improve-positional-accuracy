@@ -5,7 +5,7 @@ import pandas
 arcpy.env.overwriteOutput = True
 
 
-ND = "./output/network_ln1_ND.nd"
+ND = "./output/highway_ln1_ND.nd"
 snapped_dumm = "C:/GIS/dumm.shp"
 fips = 'C:/Users/pankaj/Desktop/RAIL/gis/standards/FIPS.shp'
 alllinks = "./output/highway_ln1.shp"
@@ -20,6 +20,7 @@ arcpy.MakeRouteLayer_na(ND, "Route", "resist") # update the network dataset if r
 
 # temporary files
 m = "C:/GIS/m.shp"
+sr = arcpy.SpatialReference(102005)
 
 #make arrangements for both distance and time
 def get_dist_AB(fips_a, fips_b):
@@ -27,13 +28,13 @@ def get_dist_AB(fips_a, fips_b):
     arcpy.AddLocations_na("Route", "Stops", m, "Name Name #", "5000 Kilometers", "", "B1 SHAPE;B1_ND_Junctions SHAPE",
                           "MATCH_TO_CLOSEST", "CLEAR", "NO_SNAP", "5 Meters", "INCLUDE", "B1 #;B1_ND_Junctions #")
     try:
-        arcpy.Solve_na("Route", "SKIP", "TERMINATE", "500 Kilometers")
-        arcpy.SelectData_management("Route", "Routes")
-        arcpy.FeatureToLine_management("Route/Routes", feature, "", "ATTRIBUTES")
+        arcpy.Solve_na("Route", "SKIP", "TERMINATE", "5000 Kilometers")
     except:
-        print ("Route not found. 999999 Returned")
-        return -99
-    dummy = [ [row[0],row[1]] for row in arcpy.da.SearchCursor(feature, ['Total_resi', "SHAPE@LENGTH"])][0]
+        return [9999999,9999999]
+    arcpy.SelectData_management("Route", "Routes")
+    #arcpy.CopyFeatures_management("Route/Routes", feature)
+    arcpy.FeatureToLine_management("Route/Routes", feature)
+    dummy = [ [row[0],row[1]*0.000621371] for row in arcpy.da.SearchCursor(feature, ['Total_resi', "SHAPE@LENGTH"], spatial_reference=sr)][0]
     return dummy
 
 
@@ -50,15 +51,19 @@ county_to_fips_dict = name_to_FIPS_df.to_dict()
 OD["OFIPS"] = OD['Ostate'].map(county_to_fips_dict)
 OD["DFIPS"] = OD['Dstate'].map(county_to_fips_dict)
 OD = OD.fillna(0)
+OD['dist'] = ''
+OD['time'] = ''
 
 
 
 arcpy.CheckOutExtension("Network")
 for i in range(len(OD)):
-    origin = int(OD["OFIPS"][i])
-    destination = int(OD["DFIPS"][i])
+    # origin = 47047
+    # destination = 47093
+    #origin = int(OD["OFIPS"][i])
+    #destination = int(OD["DFIPS"][i])
     time, distance = get_dist_AB(origin,destination)
-    print("{0}->{1}:[Distance:{2}, Time:{3}]".format(origin,destination,distance,time))
+    print("{0}->{1}:[Distance:{2}, Time:{3} hrs]".format(origin,destination,distance,time))
     OD["dist"][i] = distance
     OD["time"][i] = time
 

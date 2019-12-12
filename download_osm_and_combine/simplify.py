@@ -1,10 +1,11 @@
 #simplyfing the final map
 import arcpy
+import pandas as pd
 
 arcpy.env.overwriteOutput = True
 
 #final_shp = "./output/highway_ln.shp"
-final_shp= "./intermediate/shapefiles/tennessee/road_cropped.shp"
+final_shp= "./output/highway_ln.shp"
 final_shp_f = "finalshp"
 
 final_shp1 = "./output/highway_ln1.shp"
@@ -24,8 +25,11 @@ def get_new_links(list_of_links):
         _list_.extend(fid_fid_dict[link])
     return list(set(_list_))
 
+arcpy.Dissolve_management(final_shp, temp, "", "", "SINGLE_PART", "UNSPLIT_LINES")
+arcpy.FeatureToLine_management(temp, temp1, "{0} Feet".format(buffer_dist), "NO_ATTRIBUTES")
 
-arcpy.CopyFeatures_management(final_shp,temp)
+arcpy.CopyFeatures_management(temp1,temp)
+
 #creating a copy
 try:
     arcpy.AddField_management(temp, "length", "FLOAT")
@@ -41,11 +45,49 @@ arcpy.MakeFeatureLayer_management(temp1,"temp1")
 
 #creating a dict of link with its connected links
 fid_fid_dict = {}
-with arcpy.da.SearchCursor(temp, ["FID"]) as curs:
-    for row in curs:
-        arcpy.SelectLayerByAttribute_management("temp", "NEW_SELECTION", '"FID" = {}'.format(row[0]))
-        arcpy.SelectLayerByLocation_management('temp1', "INTERSECT", "temp", "", "NEW_SELECTION")
-        fid_fid_dict[row[0]] = [_row_[0] for _row_ in arcpy.da.SearchCursor("temp1", ['FID'])]
+
+#if csv file present
+#converting dataframe to dict
+try:
+    a_df = pd.read_csv("a.csv").set_index('Unnamed: 0')
+    columns = list(a_df.columns.values)
+    a_df['c'] = a_df.values.tolist()
+    a_df = a_df.drop(columns, axis = 1)
+    a_df['c'] = a_df['c'].apply(lambda x: [int(i) for i in x if i == i])
+    a_dict = a_df.to_dict()['c']
+    print ("Updated from .csv file")
+    fid_fid_dict = a_dict
+except Exception as p:
+    print "Error: {0}".format(p)
+    print "File not found"
+    fid_fid_dict = {}
+
+
+try:
+    with arcpy.da.SearchCursor(temp, ["FID"]) as curs:
+        for row in curs:
+            if row[0] in fid_fid_dict.keys():
+                print row[0]
+                continue
+            if row[0]%1000==0:
+                print str(row[0]) + ","
+                pd.DataFrame.from_dict(fid_fid_dict, orient='index').to_csv("a.csv")
+            arcpy.SelectLayerByAttribute_management("temp", "NEW_SELECTION", '"FID" = {}'.format(row[0]))
+            arcpy.SelectLayerByLocation_management('temp1', "INTERSECT", "temp", "", "NEW_SELECTION")
+            fid_fid_dict[row[0]] = [_row_[0] for _row_ in arcpy.da.SearchCursor("temp1", ['FID'])]
+except Exception as p:
+    print "Error: {0}".format(p)
+    print "Error in finding connected Links"
+    print "," + str(row[0])
+    pd.DataFrame.from_dict(fid_fid_dict, orient = 'index').to_csv("a.csv")
+
+
+
+
+
+
+#fid_fid_dict = {}
+#arcpy.FeatureVerticesToPoints_management(temp, temp2, "BOTH_ENDS")
 
 
 #get disconnected nodes

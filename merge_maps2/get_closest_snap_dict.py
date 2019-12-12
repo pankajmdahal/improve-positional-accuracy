@@ -53,6 +53,7 @@ def remove_touching_linkids(list):
 for other in others:
     # clipping the shapefile and getting node-coordinate dict
     arcpy.MakeFeatureLayer_management(other, other_f)
+    #each link is associated with 2 nodes, make its dictionary
     link_node_dict = {row2.getValue("_ID_"): [row2.getValue("_A_"), row2.getValue("_B_")] for row2 in
                       arcpy.SearchCursor(other_f)}
     nodes_inside = []

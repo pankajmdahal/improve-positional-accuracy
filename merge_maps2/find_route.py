@@ -27,6 +27,7 @@ for filename in exclude_files_list:
 list_of_shp = [intermediate_folder + x for x in list_of_shp]
 print("List of layers imported {0}".format(list_of_shp))
 
+
 def get_where_clause(colname, list_of_link_ids):
     wh_cl = ""
     for id in list_of_link_ids:
@@ -105,8 +106,8 @@ def create_buffer_nd_shp(key, _a_, _b_, _len_):
     where_clause = """ "_ID_" = %d""" % key
     arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
     arcpy.Buffer_analysis(other_f, buffer_shp, str(buffer_dist) + ' feet')
-    arcpy.Clip_analysis(base,buffer_shp,network_dataset)
-    #arcpy.CopyFeatures_management(m1, network_dataset)
+    arcpy.Clip_analysis(base, buffer_shp, network_dataset)
+    # arcpy.CopyFeatures_management(m1, network_dataset)
     arcpy.BuildNetwork_na(network_dataset_ND)
     return (coordinates_conv_dict[_a_], coordinates_conv_dict[_b_])
 
@@ -126,7 +127,7 @@ def get_length_route(points):
     arcpy.Solve_na("Route", "SKIP", "TERMINATE", "500 Kilometers")
     arcpy.SelectData_management("Route", "Routes")
     arcpy.FeatureToLine_management("Route\\Routes", f, "", "ATTRIBUTES")
-    #corrected to "Total_Length" from "Total_Leng"
+    # corrected to "Total_Length" from "Total_Leng"
     leng = [row.getValue("Total_Length") for row in arcpy.SearchCursor(f)][0] / 1609.34
     return leng
 
@@ -153,8 +154,9 @@ for other in others:
     arcpy.CopyFeatures_management("temp", clipped_dataset)
     other_pt = other
     other_pt = other_pt.replace("intermediate/", "intermediate/pt_")
-    clipped_dataset_pt = other_pt
+    clipped_dataset_pt = other_pt  # the entire node file is used
     print("Clipped Dataset Created..")
+
     arcpy.MakeFeatureLayer_management(base, base_f)
     print ("working on {0}".format(other))
     arcpy.MakeFeatureLayer_management(other, other_f)
@@ -165,7 +167,7 @@ for other in others:
     route_not_found_dict = {}
     route_tolerance_exceed_dict = {}
     route_buffer_exceed_dict = {}
-    miniature_links_dict = {}
+    miniature_links_dict = {}  # not written in a file as of now
 
     for key in start_end_ids_dict.keys():
         _a_ = start_end_ids_dict[key][0]
@@ -175,11 +177,11 @@ for other in others:
         # if any of these nodes are not in the list, just ouput
         if _a_ not in coordinates_conv_dict or _b_ not in coordinates_conv_dict:
             route_not_found_dict[key] = _len_
-            print "!" # one or more of the nodes not in base network
+            print "!"  # one or more of the nodes not in base network
             continue
         if _len_ < 2 * buffer_dist / 5280:  # if the links are comparable in size to the buffer distance
             miniature_links_dict[key] = _len_
-            print "~" # length of the link is too small compared to buffer
+            print "~"  # length of the link is too small compared to buffer
             continue
 
         # for search of routes within buffer
@@ -187,16 +189,17 @@ for other in others:
         distance_list_dict = []
         minimum_distance = get_route_distance(a_list, b_list, network_dataset_ND)
         if minimum_distance == 99999:  # any route not found in the buffer layer
-            print "&" # route found only within the entire network
+            print "&"  # route found only within the entire network
             minimum_distance = get_route_distance(a_list, b_list, all_dataset_ND)
-            route_buffer_exceed_dict[key] = [minimum_distance, _len_]
+            route_tolerance_exceed_dict[key] = [minimum_distance, _len_]
             if minimum_distance == 99999:
                 route_not_found_dict[key] = _len_
-                print "^" # nodes mapped but route not found in base network
+                print "^"  # nodes mapped but route not found in base network
         else:
             print "@"
-            route_tolerance_exceed_dict[key] = [minimum_distance, _len_]
+            route_buffer_exceed_dict[key] = [minimum_distance, _len_]
 
 pandas.DataFrame.from_dict(route_not_found_dict, orient='index').to_csv(no_routes)
 pandas.DataFrame.from_dict(route_tolerance_exceed_dict, orient='index').to_csv(no_tolerance)
 pandas.DataFrame.from_dict(route_buffer_exceed_dict, orient='index').to_csv(no_tolerance_buffer)
+pandas.DataFrame.from_dict(miniature_links_dict, orient='index').to_csv(miniature_links)

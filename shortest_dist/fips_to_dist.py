@@ -8,6 +8,8 @@ arcpy.env.overwriteOutput = True  # overwrite files if its already present
 
 alllinks = "../shp/NHP/nhp_dissolved/nhp.shp"
 fips = 'C:/Users/pankaj/Desktop/RAIL/gis/standards/FIPS.shp'
+
+#road network with length and speed limit
 networkDataset = "../shp/NHP/nhpnv14-05shp/NHPNLine_ND"
 arcpy.CalculateField_management(alllinks, "Length", '!Shape.length@miles!', "PYTHON")
 
@@ -63,13 +65,15 @@ county_to_fips_dict = name_to_FIPS_df.to_dict()
 
 OD["OFIPS"] = OD['Ostate'].map(county_to_fips_dict)
 OD["DFIPS"] = OD['Dstate'].map(county_to_fips_dict)
+
+
 OD = OD.fillna(0)
 
 
 for i in range(len(OD)):
     origin = int(OD["OFIPS"][i])
     destination = int(OD["DFIPS"][i])
-    distance = get_dist_AB(origin,destination)
+    time, distance = get_dist_AB(origin,destination)
     print("{0}->{1}:{2}".format(origin,destination,distance))
     OD["dist"][i] = distance
 
