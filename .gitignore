@@ -3,6 +3,7 @@
 *.dat
 *.mxd
 *.xlsx
+*.pyc
 
 */intermediate/
 */input/

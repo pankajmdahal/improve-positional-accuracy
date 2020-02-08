@@ -7,7 +7,8 @@ search_dist = 2 #miles distance to where the new links has to be found
 snap_dist = 5280 #ft (validated distance)
 
 
-clip_state_list = ["'TN'", "'NC'","'SC'","'GA'","'FL'","'AL'","'MS'"]
+#clip_state_list = ["'TN'", "'NC'","'SC'","'GA'","'FL'","'AL'","'MS'"]
+clip_state_list = ["'FL'"]
 colname_list = ['FID','ID','RR1', 'RR2','RR3','RR4', 'RR5', 'LINK_TYPE', 'SIGNAL', 'CAPY_CODE', 'FF_SPEED']
 
 new_shp = 'input/shp/alllinks.shp'
@@ -16,7 +17,12 @@ all_states = 'input/shp/tl_2017_us_states.shp'
 final = "input/shp/joined.shp"
 empty = "C:/GIS/empty.shp"
 connecting_lines_at_border = "C:/GIS/clab.shp"
+connecting_lines_at_border_f = "clabf"
+
 alllinks = 'input/shp/merged_links.shp'
+alllinks_f = "alllinksf"
+
+disk_shp = 'C:/GIS/dumm.shp'
 
 
 
@@ -46,6 +52,8 @@ clipped_new_f = "cn"
 
 clipped_old_pt_f = 'cpo'
 clipped_new_pt_f = 'cpn'
+
+m_line_f = "mlf"
 
 arcpy.CopyFeatures_management(empty,connecting_lines_at_border)
 
@@ -104,17 +112,12 @@ arcpy.MakeFeatureLayer_management(clipped_old_pt, clipped_old_pt_f)
 arcpy.MakeFeatureLayer_management(clipped_new_pt, clipped_new_pt_f)
 
 
+arcpy.MakeFeatureLayer_management(clipped_old, clipped_old_f)
+arcpy.MakeFeatureLayer_management(clipped_new, clipped_new_f)
+
 
 #cut features should not be multipart
-
-
-
 #add this later
-
-
-
-
-
 
 
 #now the most important part comes by
@@ -153,21 +156,48 @@ with arcpy.da.SearchCursor(clipped_old_pt, colname_list, where_clause=get_where_
             print ("Logging...")
             where_clause = get_where_clause("FID", fid)
             arcpy.SelectLayerByAttribute_management(clipped_new_pt_f, "NEW_SELECTION", where_clause)
-
             new_fid_list = [_row_[0] for _row_ in arcpy.da.SearchCursor(clipped_new_pt_f, ['FID'])]
-
             arcpy.Merge_management([clipped_new_pt_f,clipped_old_pt_f],m)
             arcpy.PointsToLine_management(m, m_line)
-            [arcpy.AddField_management(m_line, x, "SHORT", "", "", "", "", "NON_NULLABLE", "NON_REQUIRED", "") for x in colname_list[2:]]
 
+
+            #combine the small segment with old and new links to form a single line
+            arcpy.MakeFeatureLayer_management(m_line, m_line_f)
+            arcpy.SelectLayerByLocation_management(clipped_old_f, "INTERSECT", m_line_f, "","NEW_SELECTION")
+            arcpy.SelectLayerByLocation_management(clipped_new_f, "INTERSECT", m_line_f, "","NEW_SELECTION")
+            arcpy.Merge_management([m_line_f,clipped_old_f, clipped_new_f], temp)
+            arcpy.Dissolve_management(temp, m_line, "", "", "SINGLE_PART", "DISSOLVE_LINES")
+
+            #get the attributes
+            [arcpy.AddField_management(m_line, x, "SHORT", "", "", "", "", "NON_NULLABLE", "NON_REQUIRED", "") for x in colname_list[2:]]
             with arcpy.da.UpdateCursor(m_line, colname_list[1:]) as _cursor_:
                 for _row_ in _cursor_:
                     _row_ = row[1:]
                     _cursor_.updateRow(_row_)
+            #delete from others
+            arcpy.DeleteFeatures_management(clipped_old_f)
+            arcpy.DeleteFeatures_management(clipped_new_f)
+
             arcpy.Merge_management([m_line, connecting_lines_at_border], temp)
             arcpy.Copy_management(temp, connecting_lines_at_border)
 
 
+
+#blah blah blah blah (snapping)
+arcpy.FeatureVerticesToPoints_management (clipped_old, disk_shp, "BOTH_ENDS")
+arcpy.Snap_edit(disk_shp, [[disk_shp, "END", "100 Feet"]])
+arcpy.Snap_edit(clipped_old, [[disk_shp, "END", "100 Feet"]])
+
+arcpy.FeatureVerticesToPoints_management (clipped_new, disk_shp, "BOTH_ENDS")
+arcpy.Snap_edit(disk_shp, [[disk_shp, "END", "10 Feet"]])
+arcpy.Snap_edit(clipped_new, [[disk_shp, "END", "5 Feet"]])
+
+
 arcpy.Merge_management([clipped_new,clipped_old,connecting_lines_at_border], alllinks )
+
+
 print "Different Attributes, or multipart on new: {0}".format(list(set(not_snapped_ids)))
 print "Multipart on old: {0}".format(list(set(multipart)))
+
+
+#one on one matching
