@@ -1,19 +1,11 @@
 import arcpy
-
-arcpy.env.overwriteOutput = True
-
-buffer_dist = 100 #ft distance where the links like
-search_dist = 2 #miles distance to where the new links has to be found
-snap_dist = 5280 #ft (validated distance)
+from params import *
+import numpy as np
 
 
-#clip_state_list = ["'TN'", "'NC'","'SC'","'GA'","'FL'","'AL'","'MS'"]
-clip_state_list = ["'FL'"]
-colname_list = ['FID','ID','RR1', 'RR2','RR3','RR4', 'RR5', 'LINK_TYPE', 'SIGNAL', 'CAPY_CODE', 'FF_SPEED']
 
-new_shp = 'input/shp/alllinks.shp'
-old_shp = 'input/shp/old_links.shp'
-all_states = 'input/shp/tl_2017_us_states.shp'
+
+
 final = "input/shp/joined.shp"
 empty = "C:/GIS/empty.shp"
 connecting_lines_at_border = "C:/GIS/clab.shp"

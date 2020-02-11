@@ -1,25 +1,22 @@
 import arcpy
 import pandas
 import numpy as np
+from params import *
 
 # for each link in old link, there has to be a link in the new network within 5 miles radious with the same attributes
 arcpy.env.overwriteOutput = True
-
-new_shp = 'input/shp/alllinks.shp'
-old_shp = 'input/shp/old_links.shp'
-final_output = 'input/shp/output/alllinks.shp'
 
 new_shpf = "newshpf"
 
 merged_links = 'input/shp/merged_links.shp'
 merged_linksf = 'mergedf'
 
-colname_list = ['FID', 'ID', 'RR1', 'RR2', 'RR3', 'RR4', 'RR5', 'LINK_TYPE', 'SIGNAL', 'CAPY_CODE', 'FF_SPEED']
+
 
 temp = "C:/GIS/temp.shp"
 clipped_states_in = 'C:/GIS/clipped_in.shp'
 
-search_dist_list = np.linspace(0.2, 4, 20)# miles distance to where the new links has to be found (1 used but one feature is over 1 mile)
+
 
 arcpy.MakeFeatureLayer_management(merged_links, merged_linksf)
 arcpy.MakeFeatureLayer_management(new_shp, new_shpf)

@@ -19,23 +19,42 @@ with open("sctg.csv") as f:
 #df1.to_csv("AARCode.csv", ignore_index=True)
 
 
-str2Match = "apple inc"
-strOptions = ["Apple Inc.","apple park","apple incorporated","iphone"]
-# You can also select the string with the highest matching percentage
-highest = process.extractOne(str2Match,strOptions)
-print(highest)
+def UncommonWords(A, B):
+   # count will contain all the word counts
+   count = 0
+   # insert words of string A to hash
+   A = A.split()
+   B = B.split()
+   if A[0] == B[0]:
+      count = 2
+   # return required list of words
+   list_of_common_words = [x for x in A if x in B]
+   return count + len(list_of_common_words)
 
 
+conv_df = pd.read_csv("conversion.csv")
+df1 = df1.reset_index()[['Code', 'sctg']]
 
-df2 = pd.read_csv("../../shortlines_project/conversion.csv")
-
-
-for i in range(10):
+for i in range(len(conv_df)):
+   #print i
    highest_j = 0
    _j_=0 #jth element would have the highest
-   for j in range(len(df2)):
-      highest_new = process.extractOne(df1.iloc[i]['sctg'].lower(), df2.iloc[j]['0'].lower())
-      if highest_new[1] > highest_j:
+   s1 = re.sub('[~!@#$%^&*()_+,.0123456789-]', '', conv_df.iloc[i]['0'].lower())
+   for j in range(len(df1)):
+      s2 = re.sub('[~!@#$%^&*()_+,.0123456789-]', '', df1.iloc[j]['sctg'].lower()).strip()
+      highest_new = UncommonWords(s1,s2)
+      if highest_new > highest_j:
+         #print "ENTERED"
          highest_j = highest_new
          _j_ = j
-   df1.iloc[i]['new'] = df2.iloc[_j_]['1']
+         _s2_ = s2
+   if _j_ != 0:
+      conv_df.at[i, 'new'] = df1.iloc[_j_]['Code']
+      conv_df.at[i, 'desc'] = df1.iloc[_j_]['sctg']
+      conv_df.at[i, 'count'] = highest_j
+      #conv_df.at[i, 's2'] = _s2_
+      #conv_df.at[i, 's1'] = s1
+
+conv_df.to_csv("apple.csv")
+
+re.sub('[~!@#$%^&*()_+ ]', '', "vnlad fyfg345$%$&*%^*%hfgh")
