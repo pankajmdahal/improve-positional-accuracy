@@ -21,4 +21,5 @@ all_states = 'input/shp/tl_2017_us_states.shp'
 
 
 clip_state_list = ["'TN'", "'NC'","'SC'","'GA'","'FL'","'AL'","'MS'"]
+clip_state_list = ["'VA'", "'WV'","'KY'"]
 colname_list = ['FID', 'ID', 'RR1', 'RR2', 'RR3', 'RR4', 'RR5', 'LINK_TYPE', 'SIGNAL', 'CAPY_CODE', 'FF_SPEED']
