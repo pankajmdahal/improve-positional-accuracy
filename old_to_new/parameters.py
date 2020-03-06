@@ -2,20 +2,17 @@
 clip_distance = "10 Miles"
 
 
-seed = 507 #knoxville
-sample_size = 30
-
 near_snap_dist = "2 Mile"  # the distance to which the old nodes has to snapped to the new network
 network_buffer_dist = 5
 
 extent_switch = 1 #set this to one if the new network is significantly bigger
 
 #generic shapefiles :)
-old_links_shp = './shp/old_links.shp'
+old_links_shp = "../../RAIL11/RAIL/gis/old_links.shp"
 new_links_shp = './shp/railway_ln_connected.shp'
 
 
-
+#all of these are temporary
 new_nodes_shp = './shp/intermediate/nodes_new.shp'
 new_links_clipped = './shp/intermediate/new_links_clipped.shp'
 snapped_old_nodes = 'C:/GIS/snapped.shp'
@@ -26,6 +23,7 @@ temp1f = "temp1f"
 o = "in_memory/o"  # temporary files
 d = "in_memory/d"
 m = "in_memory/m"
+
 feature = "C:/GIS/feature.shp"  # i guess this is just a temporary layer/ no worries
 temp = "C:/GIS/temp.shp"
 temp1 = "C:/GIS/temp1.shp"
@@ -36,9 +34,6 @@ temp3 = "C:/GIS/temp3.shp"
 correct_nodes_shp = './shp/allnodes.shp'
 
 
-# links
-sumlayer_l = "C:/GIS/sumlayer_l.shp"
-sumlayer_n = "C:/GIS/sumlayer_n.shp"
 
 emptyshapefile = "C:/GIS/empty.shp"
 new_new_nodes = "./shp/intermediate/_new_nodes.shp"

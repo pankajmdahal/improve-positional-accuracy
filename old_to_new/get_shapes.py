@@ -7,6 +7,8 @@ arcpy.env.overwriteOutput = True
 
 linksn_f = "linksf"
 
+
+
 links_o = old_links_shp  # use this area to crop the new link
 links_n = new_links_clipped  # cropped area would be outputted to this file
 nodes_n = new_nodes_shp  # the nodes calculated from new links would be outputted here
@@ -40,9 +42,9 @@ arcpy.AddField_management(links_o, "_ID_", "LONG")
 arcpy.CalculateField_management(links_o, "_ID_", '!FID!', "PYTHON")
 arcpy.FeatureVerticesToPoints_management(links_o, nodes_o, "BOTH_ENDS")
 arcpy.DeleteIdentical_management(nodes_o, ['Shape'])
-arcpy.AddField_management(nodes_o, "ID", "LONG")
-arcpy.CalculateField_management(nodes_o, "ID", '!FID!', "PYTHON")
-fieldnames = [x for x in [f.name for f in arcpy.ListFields(nodes_o)] if x not in ['FID', 'Shape', 'ID']]
+arcpy.AddField_management(nodes_o, "_ID_", "LONG")
+arcpy.CalculateField_management(nodes_o, "_ID_", '!FID!', "PYTHON")
+fieldnames = [x for x in [f.name for f in arcpy.ListFields(nodes_o)] if x not in ['FID', 'Shape', '_ID_']]
 arcpy.DeleteField_management(nodes_o, fieldnames)
 
 # snap nodes to calculate routes
