@@ -8,7 +8,6 @@ arcpy.env.overwriteOutput = True
 linksn_f = "linksf"
 
 
-
 links_o = old_links_shp  # use this area to crop the new link
 links_n = new_links_clipped  # cropped area would be outputted to this file
 nodes_n = new_nodes_shp  # the nodes calculated from new links would be outputted here

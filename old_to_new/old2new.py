@@ -61,6 +61,68 @@ def get_distance(points):
          arcpy.CopyFeatures_management(feature, empty_memory)
     return ([f[0] for f in arcpy.da.SearchCursor(feature, 'SHAPE@LENGTH')][0])
 
+
+
+def get_dist(points,current_id,buffer_id):
+    point = arcpy.Point()
+    pointGeometryList = []
+    for pt in points:
+        point.X = pt[0]
+        point.Y = pt[1]
+        pointGeometry = arcpy.PointGeometry(point).projectAs(arcpy.SpatialReference(4326))
+        pointGeometryList.append(pointGeometry)
+    arcpy.CopyFeatures_management(pointGeometryList, m)
+    arcpy.AddLocations_na(B1_route, "Stops", m, "Name Name #", "0 Miles", "", "", "MATCH_TO_CLOSEST", "CLEAR",
+                          "NO_SNAP", "0 Miles", "INCLUDE", "")  # just in case
+    try:
+        arcpy.Solve_na(B1_route, "SKIP", "TERMINATE", "")
+        arcpy.SelectData_management(B1_route, "Routes")
+        arcpy.FeatureToLine_management(B1_route + "/Routes", feature, "", "ATTRIBUTES")
+    except:
+        print "Cannot Solve"
+        return [], 999999
+    arcpy.AddField_management(feature, "curr_id", "LONG")
+    arcpy.AddField_management(feature, "buffer_id", "LONG")
+    arcpy.CalculateField_management(feature, "curr_id", current_id, "PYTHON")
+    arcpy.CalculateField_management(feature, "buffer_id", buffer_id, "PYTHON")
+    arcpy.SelectLayerByLocation_management("newlf", "WITHIN", feature)
+    _list_ = [f[0] for f in arcpy.da.SearchCursor("newlf", '_ID_')]
+    return _list_, ([f[0] for f in arcpy.da.SearchCursor(feature, 'SHAPE@LENGTH')][0])
+
+
+
+
+#creates links in GIS and returns linkIDs
+def get_distance1(ids_of_connecting_nodes,current_id, buffer_id):
+    no_overlapping_found_flag = 0
+    dist = 0
+    count_dict = {}
+    for id in ids_of_connecting_nodes:
+        pair = new_node_id_coordinates_dict[buffer_id], old_node_id_coordinates_dict[id]
+        list_of_links, currdist = get_dist(pair, current_id, buffer_id)
+        if currdist == 999999:
+            route_not_found_dict[buffer_id] = id
+        dist += currdist
+        for link in list_of_links:
+            if link in count_dict:
+                count_dict[link] = count_dict[link] + 1
+            else:
+                count_dict[link] = 1
+    try:
+        id, max_count = sorted(count_dict.items(), key=lambda item: item[1])[-1]
+    except:
+        return dist,0
+    if max_count ==1: ##only append the proper ones (the size of the shapefile is limited)
+        no_overlapping_found_flag = 1
+        try:
+           arcpy.Append_management(feature, empty_memory)
+        except: #if its the first time
+            arcpy.CopyFeatures_management(feature, empty_memory)
+    return dist,no_overlapping_found_flag
+
+
+
+
 #to find out the old nodes within any distance *less than 5 miles here* of buffer nodes
 def get_buffer_nodes_dist_dict():
     near_table = "in_memory//t1"
@@ -168,6 +230,10 @@ def get_where_clause(colname, list_of_link_ids):
     return wh_cl[:-4]
 
 
+
+
+
+
 # find the nodes that are not connected to anyone (aka. did not find any snaps in the new network, could be skipped later)
 arcpy.MakeFeatureLayer_management(old_ns, "snapped")
 arcpy.SelectLayerByLocation_management("snapped", "INTERSECT", new_l, "", "NEW_SELECTION", "INVERT")
@@ -197,6 +263,7 @@ try:
     all_dict = np.load('all_dict.npy')
 except:
     all_dict = {}
+
 try:
     all_ids_dist_dict = np.load('all_ids_dist_dict.npy')
 except:
@@ -223,80 +290,48 @@ for current_id in curr_ids:
         ids_distance_dict = {}  # each id and its sum of distances to connecting nodes on all buffers
     buffer_nodes = curnod_buffnod_dist_dict[current_id]
     sorted_buffer_nodes = sorted(buffer_nodes.items(), key=lambda item: item[1])
-
-
-
-
-
-    for buffer_dist in buffer_dists:
-        if current_id in all_dict:  # previously/from excel file
-            if buffer_dist in all_dict[current_id]:
-                bufferdist_snappednode_dict[buffer_dist] = all_dict[current_id][buffer_dist]
-                print ("..")
-                continue
-        print("Buffer Distance: {0}".format(buffer_dist))
-        buffer_node_ids = get_buffer_nodes_ids(current_id)
-        # if any big distance buffer confirmed that node, no need to do that work again,
-        if len(buffer_node_ids) == 0:
-            print("No nodes found within buffer")
-            bufferdist_snappednode_dict[buffer_dist] = -96  # no nodes found in that buffer
-            print ("...")
+    print("{0}: {1}".format(current_id, sorted_buffer_nodes))
+    ids_of_connecting_nodes = old_node_connections_dict[current_id]
+    # the isolated nodes is removed because there would be no route to the node (saves time)
+    ids_of_connecting_nodes = list(set([x for x in ids_of_connecting_nodes if x not in isolated_ids]))
+    print("\tIDs of connecting nodes: {0}".format(ids_of_connecting_nodes))  # in old network
+    # remove the buffer_node_ids that are not in the snapped_removed_ids
+    # buffer_node_ids
+    count = 0
+    for buffer_id,distance in sorted_buffer_nodes:
+        if distance > near_node_dict[current_id][1]*2: #cannot be too close
+            break
+        if buffer_id in ids_distance_dict:
+            print ("sum of paths known for bufferid: {0}".format(buffer_id))
             continue
-        ids_found_at_higher_buffer = list(
-            set([y for x, y in bufferdist_snappednode_dict.iteritems() if y in buffer_node_ids and y > buffer_dist]))
-        if len(ids_found_at_higher_buffer) == 1:
-            print("Buffer Node: {0} had minimum distance for higher buffer.".format(ids_found_at_higher_buffer[0]))
-            bufferdist_snappednode_dict[buffer_dist] = ids_found_at_higher_buffer[0]
-            print ("....")
-            continue
-        print("{0}: {1}".format(current_id, buffer_node_ids))
-        ids_of_connecting_nodes = old_node_connections_dict[current_id]
-        # the isolated nodes is removed because there would be no route to the node (saves time)
-        ids_of_connecting_nodes = list(set([x for x in ids_of_connecting_nodes if x not in isolated_ids]))
-        print("\tIDs of connecting nodes: {0}".format(ids_of_connecting_nodes))  # in old network
-        # remove the buffer_node_ids that are not in the snapped_removed_ids
-        # buffer_node_ids
-        for buffer_id in buffer_node_ids:
-            # print ("\tworking on: {0}".format(buffer_id)) #buffer node id
-            if buffer_id in ids_distance_dict:
-                print ("sum of paths known for bufferid: {0}".format(buffer_id))
-                continue
-            dist = 0
-            for id in ids_of_connecting_nodes:
-                pair = new_node_id_coordinates_dict[buffer_id], old_node_id_coordinates_dict[id]
-                currdist = get_distance(pair)
-                if currdist == 999999:
-                    route_not_found_dict[buffer_id] = id
-                dist += currdist
-            ids_distance_dict[buffer_id] = dist
-        # choosing the one with minimum distance
-        _ids_distance_dict_ = {}  # each id *in this buffer* and its sum of distances to connecting nodes
-        for node in buffer_node_ids:  # print id and distance formatted
-            _ids_distance_dict_[node] = ids_distance_dict[node]
-            print("\t\t{0}: {1}".format(node, _ids_distance_dict_[node]))
-        minimum = min(_ids_distance_dict_.values())
-        maximum = max(_ids_distance_dict_.values())
-        if minimum == maximum:
-            bufferdist_snappednode_dict[buffer_dist] = -99  # all the nodes have the same distance, or all nodes cannot be solved
-            continue
-        minimum_dist_nodes = [k for k, v in _ids_distance_dict_.items() if v == minimum]
-        if len(minimum_dist_nodes) == 1:  # snap to that
-            bufferdist_snappednode_dict[buffer_dist] = minimum_dist_nodes[0]
-            print("Added to snap dictionary: {0}:{1}".format(current_id, bufferdist_snappednode_dict[buffer_dist]))
-        else:
-            bufferdist_snappednode_dict[buffer_dist] = -95  # multiple minimum (possibly because one of the routes was not found)
-            multiple_minimum[current_id] = minimum_dist_nodes
-    all_dict[current_id] = bufferdist_snappednode_dict
+        else: #id not present (check if further going necessary
+            ids_distance_dict[buffer_id]
+
+
+        dist1,overlap_flag = get_distance1(ids_of_connecting_nodes, current_id, buffer_id)
+        ids_distance_dict[buffer_id] = dist1,overlap_flag
+        if overlap_flag ==1:
+            count = 100000
+        count = count+1
     all_ids_dist_dict[current_id] = ids_distance_dict
-    # all_df.append(pandas.DataFrame({'dist':[buffer_dist]*len(old_new_node_dictionary), 'old_nodes': old_new_node_dictionary.keys(), 'new_nodes': old_new_node_dictionary.values()}))
-    # pandas.DataFrame.from_dict(old_new_node_dictionary, orient='index').to_csv(old_new_csv)
-    # pandas.DataFrame.from_dict(route_not_found_dict, orient='index').to_csv(route_not_found_csv)
-    # pandas.DataFrame.from_dict(multiple_minimum, orient='index').to_csv(multiple_minimum_csv)
     # save dictionaries as numpy objects
-    np.save('all_ids_dist_dict', np.array(dict(all_ids_dist_dict)))
-    np.save('all_dict', np.array(dict(all_dict)))
+    np.save('all_ids_dist_dict1', np.array(dict(all_ids_dist_dict)))
+    np.save('all_dict1', np.array(dict(all_dict)))
 
 
+import numpy as np
+import pandas as pd
+
+
+try:
+    all_dict = np.load('all_dict1.npy').item()
+except:
+    all_dict = {}
+
+try:
+    all_ids_dist_dict = np.load('all_ids_dist_dict1.npy').item()
+except:
+    all_ids_dist_dict = {}
 
 
 
@@ -308,22 +343,57 @@ def get_test(dist, val):
         return 0
 
 
+all_unoverlapped = {}
+for x, y in all_ids_dist_dict.iteritems():
+    all_unoverlapped[x] = [p for p, q in y.iteritems() if q[1] == 1]
+    #if none found with no overlapped
+    if len(all_unoverlapped[x])==0:
+        all_unoverlapped[x] = [p for p, q in y.iteritems()]
+    _min_ = min([q[0] for p, q in y.iteritems()])
+    all_unoverlapped[x] = [p for p, q in y.iteritems() if q[0]==_min_][0]
 
-data_df = pandas.DataFrame.from_dict(all_dict, orient='index')
-data_df = data_df[buffer_dists]
-data_df.to_csv("buffer_node_dist.csv")
 
-data_df1 = data_df.copy()
+data_df = pd.DataFrame.from_dict(all_unoverlapped, orient='index')
+#data_df.to_csv("buffer_node_dist.csv")
 threshold = 0.01
-for colname in buffer_dists:
-    data_df1[colname] = data_df1[colname].map(nearest_ground_truth_dict)
+data_df[1] = data_df[0].map(nearest_ground_truth_dict)
+data_df[2] = np.where((data_df[1] <= threshold) , 1, 0)
 
-data_df1['test']= data_df1[buffer_dists].min(axis=1)
+accuracy = data_df.mean()[2]
 
-for colname in buffer_dists:
-    data_df1[colname] = np.where((data_df1[colname] == data_df1['test']) , 1, 0)
 
-plot_dict = data_df1.sum().to_dict()
+
+#plotting
+plot_interesting = {}
+_dumm_ = {}
+for x, y in all_ids_dist_dict.iteritems():
+    for p,q in y.iteritems():
+        _dist_ = [m for l,m in curnod_buffnod_dist_dict[x].iteritems() if p== l][0]
+        _dumm_[p] = [q[0], nearest_ground_truth_dict[p], _dist_,q[1]]
+    plot_interesting[x] = _dumm_
+    _dumm_ = {}
+
+
+
+
+np.save('plot_dict11', np.array(dict(plot_interesting)))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 del plot_dict['test']
 np.save('plot_dict', np.array(dict(plot_dict)))
 pandas.DataFrame.from_dict(plot_dict, orient= 'index').transpose().to_csv("plot4.csv")
@@ -344,39 +414,7 @@ print("Node Conversion complete")
 
 
 
-something_happened = []
 
-#creates links in GIS and returns linkIDs
-def get_distance1(points,current_id, buffer_id):
-    point = arcpy.Point()
-    list = []
-    pointGeometryList = []
-    for pt in points:
-        point.X = pt[0]
-        point.Y = pt[1]
-        pointGeometry = arcpy.PointGeometry(point).projectAs(arcpy.SpatialReference(4326))
-        pointGeometryList.append(pointGeometry)
-    arcpy.CopyFeatures_management(pointGeometryList, m)
-    arcpy.AddLocations_na(B1_route, "Stops", m, "Name Name #", "0 Miles", "", "", "MATCH_TO_CLOSEST", "CLEAR",
-                          "NO_SNAP", "0 Miles", "INCLUDE", "")  # just in case
-    #since these are validated nodes, no need for try and except
-    arcpy.Solve_na(B1_route, "SKIP", "TERMINATE", "")
-    arcpy.SelectData_management(B1_route, "Routes")
-    arcpy.FeatureToLine_management(B1_route + "/Routes", feature, "", "ATTRIBUTES")
-    arcpy.AddField_management(feature, "curr_id", "LONG")
-    arcpy.AddField_management(feature, "buffer_id", "LONG")
-    arcpy.CalculateField_management(feature, "curr_id", current_id, "PYTHON")
-    arcpy.CalculateField_management(feature, "buffer_id", buffer_id, "PYTHON")
-    arcpy.SelectLayerByLocation_management("newlf", "WITHIN", feature)
-    #print "Exception: {0}:{1}".format(current_id,buffer_id)
-    something_happened.append([current_id,buffer_id])
-    #return -99
-    _list_ = [f[0] for f in arcpy.da.SearchCursor("newlf", '_ID_')]
-    try:
-        arcpy.Append_management(feature, empty_memory)
-    except:
-        arcpy.CopyFeatures_management(feature, empty_memory)
-    return _list_
 
 
 def get_buffer_node_ids1(curr):
@@ -401,11 +439,7 @@ for buffer_id in buffer_node_ids:
     for id in ids_of_connecting_nodes:
         pair = new_node_id_coordinates_dict[buffer_id], old_node_id_coordinates_dict[id]
         list_of_links = get_distance1(pair,current_id, buffer_id)
-        for link in list_of_links:
-            if link in count_dict:
-                count_dict[link] = count_dict[link]+1
-            else:
-                count_dict[link] = 1
+
     count_link_from_currentid_dict[buffer_id] = count_dict
 
 
