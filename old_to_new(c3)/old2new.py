@@ -5,6 +5,7 @@ from parameters import *
 import random
 import numpy as np
 
+
 m = "in_memory/m11"
 
 old_n = old_nodes_shp
@@ -112,13 +113,14 @@ def get_distance1(ids_of_connecting_nodes,current_id, buffer_id):
         id, max_count = sorted(count_dict.items(), key=lambda item: item[1])[-1]
     except:
         return dist,0
-    if max_count ==1: ##only append the proper ones (the size of the shapefile is limited)
+    if max_count ==1: # only the routes that are not overlapped (the size of the shapefile is limited)
         no_overlapping_found_flag = 1
-        try:
-           arcpy.Append_management(feature, empty_memory)
-        except: #if its the first time
-            arcpy.CopyFeatures_management(feature, empty_memory)
-    return dist,no_overlapping_found_flag
+        # comment this if you dont want a shapefile
+        # try:
+        #    arcpy.Append_management(feature, empty_memory)
+        # except: #if its the first time
+        #     arcpy.CopyFeatures_management(feature, empty_memory)
+    return dist, no_overlapping_found_flag
 
 
 
@@ -127,7 +129,7 @@ def get_distance1(ids_of_connecting_nodes,current_id, buffer_id):
 def get_buffer_nodes_dist_dict():
     near_table = "in_memory//t1"
     arcpy.Project_management(new_n, temp1, arcpy.SpatialReference(102039))
-    arcpy.GenerateNearTable_analysis(temp1, old_n, near_table, "5 Miles", "NO_LOCATION", "NO_ANGLE", "ALL", "3",
+    arcpy.GenerateNearTable_analysis(temp1, old_n, near_table, "6 Miles", "NO_LOCATION", "NO_ANGLE", "ALL", "10",
                                      "PLANAR")
     df = pandas.DataFrame(arcpy.da.TableToNumPyArray(near_table, ['IN_FID', 'NEAR_FID', 'NEAR_DIST']))
     new_fid_ids_dict = {row.getValue("FID"): row.getValue("_ID_") for row in arcpy.SearchCursor(new_n)}
@@ -144,7 +146,7 @@ def get_buffer_nodes_dist_dict():
 def get_currnode_buffernode_dist_dict():
     near_table = "in_memory//t1"
     arcpy.Project_management(old_n, temp1, arcpy.SpatialReference(102039))
-    arcpy.GenerateNearTable_analysis(temp1, new_n, near_table, "6 Miles", "NO_LOCATION", "NO_ANGLE", "ALL", "100","PLANAR")
+    arcpy.GenerateNearTable_analysis(temp1, new_n, near_table, "7 Miles", "NO_LOCATION", "NO_ANGLE", "ALL", "100","PLANAR")
     df = pandas.DataFrame(arcpy.da.TableToNumPyArray(near_table, ['IN_FID', 'NEAR_FID', 'NEAR_DIST']))
     new_fid_ids_dict = {row.getValue("FID"): row.getValue("_ID_") for row in arcpy.SearchCursor(new_n)}
     old_fid_ids_dict = {row.getValue("FID"): row.getValue("_ID_") for row in arcpy.SearchCursor(old_n)}
@@ -218,9 +220,36 @@ def get_coordinates(link, id):
 
 
 def get_nearest_ground_truth_dict():
-    arcpy.Near_analysis(new_n, new_ngt)
-    near_dist_dict = {f[0]: f[1] for f in arcpy.da.SearchCursor(new_n, ['_ID_', "NEAR_DIST"])}
-    return near_dist_dict
+    new_gt_new_id_dict = {}
+    near_table = "in_memory//t1"
+    memory_ngt = "in_memory//ngt1"
+    arcpy.CopyFeatures_management(new_ngt, memory_ngt)
+    arcpy.Near_analysis(memory_ngt,new_n)
+    nearfid_to_ground_id = {row.getValue("ID"): row.getValue("NEAR_FID") for row in arcpy.SearchCursor(memory_ngt)}
+    new_fid_ids_dict = {row.getValue("FID"): row.getValue("_ID_") for row in arcpy.SearchCursor(new_n)}
+    nearfid_to_ground_id = {x:new_fid_ids_dict[y] for x,y in nearfid_to_ground_id.iteritems()}
+    arcpy.Project_management(new_n, temp1, arcpy.SpatialReference(102039))
+    arcpy.GenerateNearTable_analysis(temp1, new_ngt, near_table, "10 Miles", "NO_LOCATION", "NO_ANGLE", "ALL", "10","PLANAR")
+    df = pandas.DataFrame(arcpy.da.TableToNumPyArray(near_table, ['IN_FID', 'NEAR_FID', 'NEAR_DIST']))
+    newn_fid_ids_dict = {row.getValue("FID"): row.getValue("ID") for row in arcpy.SearchCursor(new_ngt)}
+    df['IN_FID'] = df['IN_FID'].map(new_fid_ids_dict)
+    df['NEAR_FID'] = df['NEAR_FID'].map(newn_fid_ids_dict).map(nearfid_to_ground_id)
+    df['NEAR_DIST'] = df['NEAR_DIST']/1609.04
+    #df.dropna(inplace=True)
+    ids_nearids_dict = {}
+    for i in range(len(df)):
+        if df.IN_FID[i] in ids_nearids_dict:
+            ids_nearids_dict[df.IN_FID[i]][df.NEAR_FID[i]]=df.NEAR_DIST[i]
+        else:
+            ids_nearids_dict[df.IN_FID[i]]= {df.NEAR_FID[i]:df.NEAR_DIST[i]}
+    return ids_nearids_dict
+
+
+# def get_nearest_ground_truth_dict():
+#     arcpy.Near_analysis(new_n, new_ngt)
+#     near_dist_dict = {f[0]: f[1] for f in arcpy.da.SearchCursor(new_n, ['_ID_', "NEAR_DIST"])}
+#     return near_dist_dict
+
 
 
 def get_where_clause(colname, list_of_link_ids):
@@ -228,10 +257,6 @@ def get_where_clause(colname, list_of_link_ids):
     for id in list_of_link_ids:
         wh_cl = wh_cl + """"{0}" = {1} OR """.format(colname, id)
     return wh_cl[:-4]
-
-
-
-
 
 
 # find the nodes that are not connected to anyone (aka. did not find any snaps in the new network, could be skipped later)
@@ -274,14 +299,15 @@ except:
 route_not_found_dict = {}
 multiple_minimum = {}
 
-buffer_dists = [float(x) / 10 for x in range(30, 0, -1)]  # [3,2.9,....0.1]
-sample_size = 30
+
+sample_size = 1
 curr_ids = random.sample(connections_gt3_list, sample_size)
 curr_ids = connections_gt3_list
 
 
 
 for current_id in curr_ids:
+    #current_id = curr_ids[0]
     bufferdist_snappednode_dict = {}  # has all buffer distance and snapped node
     print("Old Node ID: {0}".format(current_id))
     if current_id in all_ids_dist_dict:
@@ -305,168 +331,18 @@ for current_id in curr_ids:
             print ("sum of paths known for bufferid: {0}".format(buffer_id))
             continue
         else: #id not present (check if further going necessary
-            ids_distance_dict[buffer_id]
-
-
-        dist1,overlap_flag = get_distance1(ids_of_connecting_nodes, current_id, buffer_id)
-        ids_distance_dict[buffer_id] = dist1,overlap_flag
-        if overlap_flag ==1:
-            count = 100000
-        count = count+1
+            dist1,overlap_flag = get_distance1(ids_of_connecting_nodes, current_id, buffer_id)
+            ids_distance_dict[buffer_id]= [dist1,overlap_flag]
     all_ids_dist_dict[current_id] = ids_distance_dict
     # save dictionaries as numpy objects
-    np.save('all_ids_dist_dict1', np.array(dict(all_ids_dist_dict)))
-    np.save('all_dict1', np.array(dict(all_dict)))
+    np.save('all_ids_dist_dict', np.array(dict(all_ids_dist_dict)))
+    #np.save('all_dict1', np.array(dict(all_dict)))
 
 
-import numpy as np
-import pandas as pd
 
+#outputs
+count_connections = {x:len(y) for x,y in old_node_connections_dict.iteritems()}
+np.save('count_connections', np.array(dict(count_connections)))
+np.save('nearest_ground_truth_dict', np.array(dict(nearest_ground_truth_dict)))
+np.save('ids_nearids_dist_dict', np.array(dict(ids_nearids_dist_dict)))
 
-try:
-    all_dict = np.load('all_dict1.npy').item()
-except:
-    all_dict = {}
-
-try:
-    all_ids_dist_dict = np.load('all_ids_dist_dict1.npy').item()
-except:
-    all_ids_dist_dict = {}
-
-
-
-def get_test(dist, val):
-    if dist<threshold:
-        if val > 0:
-            return val
-    else:
-        return 0
-
-
-all_unoverlapped = {}
-for x, y in all_ids_dist_dict.iteritems():
-    all_unoverlapped[x] = [p for p, q in y.iteritems() if q[1] == 1]
-    #if none found with no overlapped
-    if len(all_unoverlapped[x])==0:
-        all_unoverlapped[x] = [p for p, q in y.iteritems()]
-    _min_ = min([q[0] for p, q in y.iteritems()])
-    all_unoverlapped[x] = [p for p, q in y.iteritems() if q[0]==_min_][0]
-
-
-data_df = pd.DataFrame.from_dict(all_unoverlapped, orient='index')
-#data_df.to_csv("buffer_node_dist.csv")
-threshold = 0.01
-data_df[1] = data_df[0].map(nearest_ground_truth_dict)
-data_df[2] = np.where((data_df[1] <= threshold) , 1, 0)
-
-accuracy = data_df.mean()[2]
-
-
-
-#plotting
-plot_interesting = {}
-_dumm_ = {}
-for x, y in all_ids_dist_dict.iteritems():
-    for p,q in y.iteritems():
-        _dist_ = [m for l,m in curnod_buffnod_dist_dict[x].iteritems() if p== l][0]
-        _dumm_[p] = [q[0], nearest_ground_truth_dict[p], _dist_,q[1]]
-    plot_interesting[x] = _dumm_
-    _dumm_ = {}
-
-
-
-
-np.save('plot_dict11', np.array(dict(plot_interesting)))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-del plot_dict['test']
-np.save('plot_dict', np.array(dict(plot_dict)))
-pandas.DataFrame.from_dict(plot_dict, orient= 'index').transpose().to_csv("plot4.csv")
-
-data_df1.to_csv("appppple.csv")
-
-
-unique_values = pandas.unique(data_df[buffer_dists].values.ravel())
-list_of_found_nodes = [x for x in unique_values if x not in [-99, -98, -97, -96, -95]]
-
-arcpy.MakeFeatureLayer_management(new_n, "newnf")
-arcpy.SelectLayerByAttribute_management("newnf", "NEW_SELECTION", get_where_clause("_ID_", list_of_found_nodes))
-arcpy.CopyFeatures_management("newnf", temp)
-arcpy.Near_analysis(temp, new_ngt)
-
-print("Node Conversion complete")
-
-
-
-
-
-
-
-def get_buffer_node_ids1(curr):
-    all = all_dict[curr].values()
-    return set([x for x in all if x not in [-99, -98, -97, -96, -95]])
-
-
-arcpy.DeleteFeatures_management(empty_memory)
-
-count_link_dict = {}
-for current_id in curr_ids:
-
-print("Old Node ID: {0}".format(current_id))
-ids_of_connecting_nodes = old_node_connections_dict[current_id]
-buffer_dist = 3
-buffer_node_ids = get_buffer_node_ids1(current_id)
-buffer_node_ids = [x for x in buffer_node_ids if x in list_of_found_nodes]
-print (buffer_node_ids)
-count_link_from_currentid_dict = {}
-for buffer_id in buffer_node_ids:
-    count_dict = {}
-    for id in ids_of_connecting_nodes:
-        pair = new_node_id_coordinates_dict[buffer_id], old_node_id_coordinates_dict[id]
-        list_of_links = get_distance1(pair,current_id, buffer_id)
-
-    count_link_from_currentid_dict[buffer_id] = count_dict
-
-
-
-count_link_dict[current_id] = count_link_from_currentid_dict
-
-
-arcpy.CopyFeatures_management(empty_memory, temp1)
-arcpy.Dissolve_management(temp1, temp2, ['curr_id', 'buffer_id'], [["Total_leng", "SUM"]], "MULTI_PART", "DISSOLVE_LINES")
-
-
-_range_ = [float(x)/10 for x in reversed(range(5,15,1))]
-data_df2 = data_df.copy()
-threshold = 0.01
-buffer_dists2 = [x for x in buffer_dists if x in _range_]
-data_df2 = data_df2[buffer_dists2]
-for colname in buffer_dists2:
-    data_df2[colname] = data_df2[colname].map(nearest_ground_truth_dict)
-
-data_df2['test']= data_df2[buffer_dists2].min(axis=1)
-
-for colname in buffer_dists2:
-    data_df2[colname] = np.where((data_df2[colname] == data_df2['test']) , 1, 0)
-
-plot_dict = data_df2.sum().to_dict()
-del plot_dict['test']
-np.save('plot_dict', np.array(dict(plot_dict)))
-pandas.DataFrame.from_dict(plot_dict, orient= 'index').transpose().to_csv("plot2.csv")
-
-data_df2.to_csv("aaaa.csv")

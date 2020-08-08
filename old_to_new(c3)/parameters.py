@@ -8,14 +8,14 @@ network_buffer_dist = 5
 extent_switch = 1 #set this to one if the new network is significantly bigger
 
 #generic shapefiles :)
-old_links_shp = "../../RAIL11/RAIL/gis/old_links.shp"
+old_links_shp = "../../RAIL11/RAIL/gis/old_links.shp" #old 1995 linkss
 new_links_shp = './shp/railway_ln_connected.shp'
 
 
 #all of these are temporary
 new_nodes_shp = './shp/intermediate/nodes_new.shp'
 new_links_clipped = './shp/intermediate/new_links_clipped.shp'
-snapped_old_nodes = 'C:/GIS/snapped.shp'
+snapped_old_nodes = './shp/intermediate/snapped_old_nodes.shp'
 old_links_cropped_shp = './shp/intermediate/cropped_old_network.shp'
 temp1f = "temp1f"
 
@@ -33,9 +33,7 @@ temp3 = "C:/GIS/temp3.shp"
 #for validation
 correct_nodes_shp = './shp/allnodes.shp'
 
-
-
-emptyshapefile = "C:/GIS/empty.shp"
+emptyshapefile = "./shp/intermediate/empty.shp"
 new_new_nodes = "./shp/intermediate/_new_nodes.shp"
 old_nodes_shp = './shp/intermediate/nodes_old.shp'
 

@@ -22,7 +22,6 @@ if extent_switch ==1: #the new network is significantly bigger than the old, so 
     arcpy.Dissolve_management("in_memory/buffer", temp)
     arcpy.SelectLayerByLocation_management(linksn_f, "INTERSECT", temp, "", "NEW_SELECTION")
     arcpy.CopyFeatures_management(linksn_f, links_n)
-
 else:
     links_n = new_links_shp
 

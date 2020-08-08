@@ -1,7 +1,7 @@
 import arcpy
 import pandas
 import numpy as np
-from params import *
+from parameters import *
 
 # for each link in old link, there has to be a link in the new network within 5 miles radious with the same attributes
 arcpy.env.overwriteOutput = True

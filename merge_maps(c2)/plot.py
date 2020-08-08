@@ -28,9 +28,9 @@ def import_dict_from_csv(filename):
 
 
 # read from csv files to a dict
-route_not_found_dict = import_dict_from_csv(no_routes)
-route_tolerance_exceed_dict = import_dict_from_csv(no_tolerance)
-route_buffer_exceed_dict = import_dict_from_csv(no_tolerance_buffer)
+no_routes_found_dict = import_dict_from_csv(no_routes)
+routes_out_of_buffer = import_dict_from_csv(no_tolerance)
+routes_within_buffer = import_dict_from_csv(no_tolerance_buffer)
 
 
 def get_where_clause(colname, list_of_link_ids):
@@ -41,30 +41,37 @@ def get_where_clause(colname, list_of_link_ids):
 
 
 # create no_route_shp
-where_clause = get_where_clause("_ID_", route_not_found_dict.keys())
+
+where_clause = get_where_clause("_ID_", no_routes_found_dict.keys())
 arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
 arcpy.CopyFeatures_management(other_f, output_no_routes_shp)
 
 # create no_tolerance_within_buffer shp
-route_within_threshold_dict = {x: y for x, y in route_tolerance_exceed_dict.iteritems() if
-                               (abs(y[0] - y[1]) / y[1]) > float(threshold) / 100}
+route_within_threshold_dict = {x: y for x, y in routes_out_of_buffer.iteritems() if
+                               ((abs(y[0] - y[1]) / y[1]) > float(threshold) / 100)}
 where_clause = get_where_clause("_ID_", route_within_threshold_dict.keys())
 arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
 arcpy.CopyFeatures_management(other_f, output_tolerance_exceed_shp)
 arcpy.AddField_management(output_tolerance_exceed_shp, '_RLENG_', "FLOAT")
-with arcpy.da.UpdateCursor(output_tolerance_exceed_shp, ['_ID_', '_RLENG_']) as cursor:
+arcpy.AddField_management(output_tolerance_exceed_shp, '_TOL_', "FLOAT")
+with arcpy.da.UpdateCursor(output_tolerance_exceed_shp, ['_ID_', '_RLENG_',"_LEN_", "_TOL_"]) as cursor:
     for row in cursor:
         row[1] = route_within_threshold_dict[row[0]][0]
+        row[3] = abs(row[1]-row[2])/row[2]
         cursor.updateRow(row)
 
 # create no_tolerance_shp
-route_buffer_within_threshold_dict = {x: y for x, y in route_buffer_exceed_dict.iteritems() if
-                                      (abs(y[0] - y[1]) / y[1]) > float(threshold) / 100}
+route_buffer_within_threshold_dict = {x: y for x, y in routes_within_buffer.iteritems() if
+                               ((abs(y[0] - y[1]) / y[1]) > float(threshold) / 100)}
+
+
 where_clause = get_where_clause("_ID_", route_buffer_within_threshold_dict.keys())
 arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
 arcpy.CopyFeatures_management(other_f, output_buffer_tolerance_exceed_shp)
 arcpy.AddField_management(output_buffer_tolerance_exceed_shp, '_RLENG_', "FLOAT")
-with arcpy.da.UpdateCursor(output_buffer_tolerance_exceed_shp, ['_ID_', '_RLENG_']) as cursor:
+arcpy.AddField_management(output_buffer_tolerance_exceed_shp, '_TOL_', "FLOAT")
+with arcpy.da.UpdateCursor(output_buffer_tolerance_exceed_shp, ['_ID_', '_RLENG_', "_LEN_", "_TOL_"]) as cursor:
     for row in cursor:
         row[1] = route_buffer_within_threshold_dict[row[0]][0]
+        row[3] = abs(row[1] - row[2]) / row[2]
         cursor.updateRow(row)
