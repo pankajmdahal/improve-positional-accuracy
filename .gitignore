@@ -4,9 +4,15 @@
 *.mxd
 *.xlsx
 *.pyc
+*.npy
+*.txt
+*.png
+*.xlsx
+*.bat
+*.xls
 
-*/intermediate/
-*/input/
-*/output/
-
+others/
 shp/
+
+*/input/
+*/intermediate/
