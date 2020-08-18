@@ -175,26 +175,9 @@ recall = tp / (tp + fn)  # sensitivity, hit rate
 precision = tp / (tp + fp)  # positive predicted value
 specificity = tn / (tn + fp)  # TNR
 accuracy = (tp + tn) / (tp + tn + fp + fn)
+f1 = 2*recall*precision/(recall+precision)
 print("Sensitivity/Recall: {0}".format(recall))
 print("Precision/PPV: {0}".format(precision))
 print("Specificity/TNR: {0}".format(specificity))
 print("Accuracy: {0}".format(accuracy))
-hm = 2*(recall*specificity)/(recall+ specificity)
-
-
-
-# ROC curve
-
-logit_roc_auc = roc_auc_score(data_df['y_pred'], data_df['y'])
-fpr, tpr, thresholds = roc_curve(data_df['y_pred'], data_df['y'])
-plt.figure()
-plt.plot(fpr, tpr, label='Logistic Regression (area = %0.2f)' % logit_roc_auc)
-plt.plot([0, 1], [0, 1], 'r--')
-plt.xlim([0.0, 1.0])
-plt.ylim([0.0, 1.05])
-plt.xlabel('False Positive Rate')
-plt.ylabel('True Positive Rate')
-plt.title('Receiver operating characteristic')
-plt.legend(loc="lower right")
-plt.savefig('Log_ROC')
-plt.show()
+print("F1: {0}".format(f1))

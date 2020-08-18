@@ -1,6 +1,7 @@
 # what portion of the new network has to be considered? This would significantly reduce the size of network dataset and consequently reduce execution time
 clip_distance = "10 Miles"
 
+clip_state_list = ["'TN'", "'NC'","'SC'","'GA'","'FL'","'AL'","'MS'"]
 
 near_snap_dist = "2 Mile"  # the distance to which the old nodes has to snapped to the new network
 network_buffer_dist = 5
@@ -18,6 +19,8 @@ new_links_clipped = './shp/intermediate/new_links_clipped.shp'
 snapped_old_nodes = './shp/intermediate/snapped_old_nodes.shp'
 old_links_cropped_shp = './shp/intermediate/cropped_old_network.shp'
 temp1f = "temp1f"
+all_area_shp = "../shp/clip_area/all.shp"
+all_area_shp_f = "allarea"
 
 # temporary/intermediate files
 o = "in_memory/o"  # temporary files
@@ -30,16 +33,18 @@ temp1 = "C:/GIS/temp1.shp"
 temp2 = "C:/GIS/temp2.shp"
 temp3 = "C:/GIS/temp3.shp"
 
+
 #for validation
 correct_nodes_shp = './shp/allnodes.shp'
-
 emptyshapefile = "./shp/intermediate/empty.shp"
 new_new_nodes = "./shp/intermediate/_new_nodes.shp"
 old_nodes_shp = './shp/intermediate/nodes_old.shp'
 
+
 # network dataset files
 B1_ND = "./shp/intermediate/B1_ND.nd"
 B1_route = "B1_route"
+
 
 # csv files
 old_new_csv = "./csv/old_new_dict.csv"
