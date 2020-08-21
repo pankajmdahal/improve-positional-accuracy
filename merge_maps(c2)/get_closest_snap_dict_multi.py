@@ -4,6 +4,7 @@ import arcpy
 import sys
 import csv
 import pandas as pd
+import numpy as np
 import os
 from merge import *
 import multiprocessing
@@ -47,7 +48,10 @@ def add_row(input, number):
         arcpy.InsertCursor(input).insertRow(feat)
 
 
-def get_coordinates_on_nearest_links(node_shp, link_shp_f, link_ids): #they have same number of features
+def get_coordinates_on_nearest_links(node_shp, link_shp, link_ids):  # they have same number of features
+    link_shp_f = "link_shpf"
+    arcpy.MakeFeatureLayer_management(node_shp, "mf")
+    arcpy.MakeFeatureLayer_management(link_shp, link_shp_f)
     nearxy = []
     count = len(link_ids)
     add_row(node_shp, count - 1)
@@ -55,13 +59,14 @@ def get_coordinates_on_nearest_links(node_shp, link_shp_f, link_ids): #they have
         where_clause = """ "_ID_" = %d""" % link_ids[i]
         arcpy.SelectLayerByAttribute_management(link_shp_f, "NEW_SELECTION", where_clause)
         arcpy.SelectLayerByAttribute_management("mf", "NEW_SELECTION", "FID IN ({})".format(i))
-        arcpy.Snap_edit("mf", [[base_f, "EDGE", buffer_dist_list[-1]]])  # the  max snap distance is taken from there
+        arcpy.Snap_edit("mf", [[link_shp_f, "EDGE", buffer_dist_list[-1]]])  # the  max snap distance is taken from there
     #
     with arcpy.da.SearchCursor(m1, ["SHAPE@XY"]) as curs:
         for xy in curs:
             nearxy.append(xy[0])
     #
     return nearxy
+
 
 def get_where_clause(colname, list_of_link_ids):
     wh_cl = ""
@@ -70,65 +75,53 @@ def get_where_clause(colname, list_of_link_ids):
     return wh_cl[:-4]
 
 
-def get_distance_blabla(node_id_to_link_ids_dict, near_ids, base, base_f, other, other_f, other_pt, other_pt_f, start_end_ids_dict, key):
-    arcpy.MakeFeatureLayer_management(base, base_f)
+def get_distance_blabla(node_id_to_link_ids_dict, base, other_pt,
+                        start_end_ids_dict, key):
+    arcpy.env.overwriteOutput = True
+    m1 = "in_memory/m1"
+    other_pt_f = "opf"
     arcpy.MakeFeatureLayer_management(other_pt, other_pt_f)
     ids_list = node_id_to_link_ids_dict[key]
     if len(ids_list) == 0:
-        return -99
-    print "Proximite link IDs: {1}".format(len(ids_list), ids_list)
+        return (np.nan, np.nan)
+    print "Node: {0}, Proximite link IDs: {1}".format(key, ids_list)
     where_clause = """ "_ID_" = %d""" % key
-    print other_pt_f
-    print where_clause
-    arcpy.SelectLayerByAttribute_management(other_pt_f, "NEW_SELECTION",where_clause)
-    arcpy.CopyFeatures_management(other_pt_f, m1) #only one row
-    arcpy.MakeFeatureLayer_management(m1, "mf")
-    near_ids[key] = get_coordinates_on_nearest_links(m1, base_f, ids_list)
+    #print where_clause
+    arcpy.SelectLayerByAttribute_management(other_pt_f, "NEW_SELECTION", where_clause)
+    arcpy.CopyFeatures_management(other_pt_f, m1)  # only one row
+    return get_coordinates_on_nearest_links(m1, base, ids_list)
+
+
+def get_near_id_to_link_ids_dict(csv_name):
+    node_id_to_link_ids_df = pd.read_csv(csv_name)
+    node_id_to_link_ids_dict = node_id_to_link_ids_df.transpose().to_dict()
+    node_id_to_link_ids_dict = {int(y['IDs: ']): eval(y['IDs of Links']) for x, y in node_id_to_link_ids_dict.iteritems()}
+    return node_id_to_link_ids_dict
 
 
 def main():
-    #arcpy.AddSpatialIndex_management(base_f)  # adjusted comment from gis.stackoverflow, why?
+    # arcpy.AddSpatialIndex_management(base_f)  # adjusted comment from gis.stackoverflow, why?
+    arcpy.env.overwriteOutput = True
     other = "./intermediate/NARN_LINE_03162018.shp"
     base = "./intermediate/railway_ln_connected.shp"
-    other_pt = other
-    other_pt = other_pt.replace("intermediate/", "intermediate/pt_")
-    other_pt_f = "opf"
-    other_f = "of"
-    base_f = "basef"
-    # find the nearest coordinates to those links
-    near_ids = {}
-    node_id_to_link_ids_df = pd.read_csv("id_min_dist(max).csv")
-    node_id_to_link_ids_dict = node_id_to_link_ids_df.transpose().to_dict()
-    node_id_to_link_ids_dict = {y['IDs: ']:y['IDs of Links'] for x,y in node_id_to_link_ids_dict.iteritems() }
+    other_pt = "./intermediate/pt_NARN_LINE_03162018.shp"
 
-    arcpy.env.overwriteOutput = True
-    # getting the names of all the shape files
+    node_id_to_link_ids_dict = get_near_id_to_link_ids_dict("id_min_dist.csv")
     arcpy.CheckOutExtension("Network")
     start_end_ids_dict = {row1.getValue("_ID_"): [row1.getValue("_A_"), row1.getValue("_B_"), row1.getValue("_LEN_")]
                           for row1 in arcpy.SearchCursor(base)}
     nodes_inside = get_all_nodes_in_link(other)
     pool = multiprocessing.Pool()
-
-    func = partial(get_distance_blabla, node_id_to_link_ids_dict, near_ids, base, base_f, other, other_f, other_pt, other_pt_f, start_end_ids_dict)
-    pool.map(func, nodes_inside)
+    #get_distance_blabla(node_id_to_link_ids_dict, near_ids, base, base_f, other, other_f, other_pt,other_pt_f, start_end_ids_dict, 10517)
+    func = partial(get_distance_blabla, node_id_to_link_ids_dict, base, other_pt, start_end_ids_dict)
+    coord_list = pool.map(func, nodes_inside)
     pool.close()
     pool.join()
-    pd.DataFrame({key: pd.Series(value) for key, value in near_ids.iteritems()}).transpose().to_csv(
+    node_coord_dict = {x:y for x,y in zip(nodes_inside,coord_list)}
+
+    pd.DataFrame({key: pd.Series(value) for key, value in node_coord_dict.iteritems()}).transpose().to_csv(
         node_coordinates_dict)
-
-
-
-
-
+    np.save('./intermediate/node_coord_dict', np.array(dict(node_coord_dict)))
 
 if __name__ == '__main__':
-
     main()
-
-
-
-
-
-
-
-
