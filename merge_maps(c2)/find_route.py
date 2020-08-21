@@ -6,23 +6,13 @@
 import arcpy
 import pandas
 import os
+import numpy as np
+from math import isnan
 from merge import *
+import multiprocessing
+from functools import partial
+import pandas as pd
 
-no_tolerance_buffer_dist = "1000 feet"
-
-arcpy.env.overwriteOutput = True
-other = "./intermediate/NARN_LINE_03162018.shp"
-base = "./intermediate/railway_ln_connected.shp"
-other_f = "other_f"
-base_f = "base_f"
-arcpy.MakeFeatureLayer_management(base, base_f)
-arcpy.MakeFeatureLayer_management(other, other_f)
-
-# parameters
-a_list = []
-b_list = []
-
-node_coordinate_dict = {}
 
 def get_where_clause(colname, list_of_link_ids):
     wh_cl = ""
@@ -35,57 +25,6 @@ def str_to_list(value):
     new = value.replace("(", "").replace(")", "")
     new = new.split(",")
     return new
-
-
-# read csv files
-coordinates_df = pandas.read_csv(node_coordinates_dict).set_index('Unnamed: 0')
-coordinates_df = coordinates_df.fillna("?")
-coordinates_df = coordinates_df.applymap(str)
-coordinates_df = coordinates_df.applymap(str_to_list)
-coordinates_df['new'] = coordinates_df['0'] + coordinates_df['1'] + coordinates_df['2']
-coordinates_df = coordinates_df[['new']]
-coordinates_dict = coordinates_df.to_dict()['new']
-
-coordinates_conv_dict = {}
-for key, value in coordinates_dict.iteritems():
-    value1 = value
-    if '?' in value1:
-        value1.remove('?')
-        try:
-            value1.remove('?')
-        except:
-            pass
-    if len(value1) == 2:
-        value1 = [list((float(value1[0]), float(value1[1])))]
-        # print "2:{0}".format(value1)
-    elif len(value1) == 4:
-        new = [list((float(value1[0]), float(value1[1])))]
-        new.append(list((float(value1[2]), float(value1[3]))))
-        value1 = new
-        # print "4:{0}".format(value1)
-    elif len(value1) == 6:
-        new = [list((float(value1[0]), float(value1[1])))]
-        new.append(list((float(value1[2]), float(value1[3]))))
-        new.append(list((float(value1[4]), float(value1[5]))))
-        value1 = new
-        # print "6:{0}".format(value1)
-    else:
-        print value1
-        print "Exception"
-        value1 = []
-    coordinates_conv_dict[int(key)] = value1
-
-
-def create_buffer_nd_shp(key, _a_, _b_, _len_):
-    # prepare ND
-    # use the key to buffer/clip/create ND
-    where_clause = """ "_ID_" = %d""" % key
-    arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
-    #arcpy.Buffer_analysis(other_f, buffer_shp, str(buffer_dist_list[-1]) + ' feet')
-    arcpy.Buffer_analysis(other_f, buffer_shp, no_tolerance_buffer_dist)
-    arcpy.Clip_analysis(base, buffer_shp, network_dataset)
-    arcpy.BuildNetwork_na(network_dataset_ND)
-    return (coordinates_conv_dict[_a_], coordinates_conv_dict[_b_])
 
 
 # functions
@@ -109,6 +48,7 @@ def get_length_route(points):
 
 
 def get_route_distance(a_list, b_list, ND):
+    distance_list = []
     arcpy.MakeRouteLayer_na(ND, route_f, "Length")
     for x1y1 in a_list:
         for x2y2 in b_list:
@@ -116,54 +56,82 @@ def get_route_distance(a_list, b_list, ND):
                 route_leng = get_length_route([x1y1, x2y2])
             except:
                 route_leng = 99999
-            distance_list_dict.append(route_leng)
-    minimum_distance = min(distance_list_dict)
+            distance_list.append(route_leng)
+    minimum_distance = min(distance_list)
     return minimum_distance
 
 
-arcpy.CheckOutExtension("Network")
-start_end_ids_dict = {row1.getValue("_ID_"): [row1.getValue("_A_"), row1.getValue("_B_"), row1.getValue("_LEN_")]
-                      for row1 in arcpy.SearchCursor(other)}
-# print clipped_dataset_pt
-route_not_found_or_not_identified_dict = {}
-route_found_within_network_dict = {}
-route_found_within_buffer_dict = {}
-miniature_links_dict = {}  # not written in a file as of now
-arcpy.BuildNetwork_na(all_dataset_ND)
-
-for link_id in start_end_ids_dict.keys():
+def get_type(coordinates_conv_dict, start_end_ids_dict,  other, base, link_id):
     _a_ = start_end_ids_dict[link_id][0]
     _b_ = start_end_ids_dict[link_id][1]
     _len_ = start_end_ids_dict[link_id][2]
     print "{0}:{1}->{2}".format(link_id, _a_, _b_)
     # if any of these nodes are not in the list, just ouput
     if _a_ not in coordinates_conv_dict or _b_ not in coordinates_conv_dict:
-        route_not_found_or_not_identified_dict[link_id] = _len_
-        print "!"  # one or more of the nodes not in base network
-        continue
+        #route_not_found_or_not_identified_dict[link_id] = _len_
+        return _len_, np.nan, 1  # one or more of the nodes not in base network
     if _len_ < 2 * buffer_dist / 5280:  # if the links are comparable in size to the buffer distance
-        miniature_links_dict[link_id] = _len_
-        print "~"  # length of the link is too small compared to buffer
-        continue
-    # for search of routes within buffer
-    (a_list, b_list) = create_buffer_nd_shp(link_id, _a_, _b_, _len_)
-    distance_list_dict = []
+        #miniature_links_dict[link_id] = _len_
+        return _len_, np.nan, 4  # length of the link is too small compared to buffer
+    # prepare ND
+    # use the key to buffer/clip/create ND
+    #network_dataset_ND = "in_memory/ND1"
+    other_f = "other_f"
+    arcpy.MakeFeatureLayer_management(other, other_f)
+    no_tolerance_buffer_dist = "1000 feet"
+    where_clause = """ "_ID_" = %d""" % link_id
+    arcpy.SelectLayerByAttribute_management(other_f, "NEW_SELECTION", where_clause)
+    arcpy.Buffer_analysis(other_f, buffer_shp, no_tolerance_buffer_dist)
+    arcpy.Clip_analysis(base, buffer_shp, network_dataset)
+    #arcpy.na.CreateNetworkDataset("in_memory_n1", network_dataset_ND, "", "NO_ELEVATION" )
+    arcpy.BuildNetwork_na(network_dataset_ND)
+    (a_list, b_list) = (coordinates_conv_dict[_a_], coordinates_conv_dict[_b_])
     minimum_distance = get_route_distance(a_list, b_list, network_dataset_ND)
     if minimum_distance == 99999:  # any route not found in the buffer layer
         minimum_distance = get_route_distance(a_list, b_list, all_dataset_ND)
         if minimum_distance == 99999:
-            route_not_found_or_not_identified_dict[link_id] = _len_
-            print "^"  # nodes mapped but route not found in base network
+            #route_not_found_or_not_identified_dict[link_id] = _len_
+            return _len_, np.nan, 1  # nodes mapped but route not found in base network
         else:
-            print "&"  # route not found within buffer
-            route_found_within_network_dict[link_id] = [minimum_distance, _len_]
+            #route_found_within_network_dict[link_id] = [minimum_distance, _len_]
+            return _len_, minimum_distance, 2  # route not found within buffer
     else:
-        print "@"
-        route_found_within_buffer_dict[link_id] = [minimum_distance, _len_]
+        #route_found_within_buffer_dict[link_id] = [minimum_distance, _len_]
+        return _len_, minimum_distance, 3  # routes found within buffer
 
-pandas.DataFrame.from_dict(route_not_found_or_not_identified_dict, orient='index').to_csv(no_routes)
-pandas.DataFrame.from_dict(route_found_within_network_dict, orient='index').to_csv(no_tolerance)
-pandas.DataFrame.from_dict(route_found_within_buffer_dict, orient='index').to_csv(no_tolerance_buffer)
-pandas.DataFrame.from_dict(miniature_links_dict, orient='index').to_csv(miniature_links)
 
-#pandas.DataFrame.from_dict(start_end_ids_dict, orient='index').to_csv("apple.csv")
+
+def main():
+    arcpy.env.overwriteOutput = True
+    arcpy.CheckOutExtension("Network")
+    coordinates_conv_dict = np.load('./intermediate/node_coord_dict.npy').item()
+    coordinates_conv_dict = {x: y for x, y in coordinates_conv_dict.iteritems() if not str(y) == "(nan, nan)"}
+    other = "./intermediate/NARN_LINE_03162018.shp"
+    base = "./intermediate/railway_ln_connected.shp"
+    # parameters
+    start_end_ids_dict = {row1.getValue("_ID_"): [row1.getValue("_A_"), row1.getValue("_B_"), row1.getValue("_LEN_")]
+                          for row1 in arcpy.SearchCursor(other)}
+    link_ids = start_end_ids_dict.keys()
+    #link_ids = link_ids[0:5]
+    #arcpy.BuildNetwork_na(all_dataset_ND)
+
+    # pool = multiprocessing.Pool()
+    # func = partial(get_type, coordinates_conv_dict, start_end_ids_dict, other, base)
+    # route_list = pool.map(func, link_ids)
+    # pool.close()
+    # pool.join()
+    #link_route_type_dict = {x: y for x, y in zip(link_ids, route_list)}
+
+    link_route_type_dict = {}
+    for id in link_ids:
+        link_route_type_dict[id] = get_type(coordinates_conv_dict, start_end_ids_dict,  other, base, id)
+
+
+
+    pd.DataFrame({key: pd.Series(value) for key, value in link_route_type_dict.iteritems()}).transpose().to_csv(
+        "./csv/link_route_type_dict.csv")
+    np.save('./intermediate/link_route_type_dict', np.array(dict(link_route_type_dict)))
+
+
+if __name__ == '__main__':
+    main()
