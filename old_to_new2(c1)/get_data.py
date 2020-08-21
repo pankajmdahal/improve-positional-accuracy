@@ -7,6 +7,9 @@ import numpy as np
 import os
 
 m = "in_memory/m11"
+arcpy.env.outputMFlag = "Disabled"
+# Set the outputZFlag environment to Disabled
+arcpy.env.outputZFlag = "Disabled"
 
 arcpy.env.overwriteOutput = True
 
